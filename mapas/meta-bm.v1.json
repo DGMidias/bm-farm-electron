@@ -1,0 +1,121 @@
+{
+  "version": 1,
+  "name": "meta-bm",
+  "notes": "Mapa inicial derivado das etapas do assistente Python. Variantes novas entram pelo gravador.",
+  "nodes": [
+    {
+      "id": "login",
+      "match": {
+        "urlIncludes": ["facebook.com/login", "business.facebook.com/login"],
+        "anyText": ["Entrar", "Log in", "Senha", "Password"]
+      },
+      "human": "login",
+      "onMiss": ["portfolio.form", "unknown"]
+    },
+    {
+      "id": "checkpoint.captcha",
+      "match": {
+        "anyText": ["captcha", "Não sou um robô", "I'm not a robot", "Verificação de segurança"]
+      },
+      "human": "captcha",
+      "onMiss": ["unknown"]
+    },
+    {
+      "id": "portfolio.form",
+      "step": "portfolio",
+      "match": {
+        "urlIncludes": ["adsmanager/onboarding", "create_business"],
+        "anyText": ["Nome da sua conta e empresa", "Create a business portfolio"]
+      },
+      "fields": ["razao_social", "responsavel", "email_comercial"],
+      "onMiss": ["empresa.info", "login", "unknown"]
+    },
+    {
+      "id": "empresa.info",
+      "step": "empresa",
+      "match": {
+        "urlIncludes": ["/latest/settings/business_info"],
+        "anyText": ["Razão social da empresa", "Business details", "Identificação fiscal"]
+      },
+      "fields": ["razao_social", "endereco", "cidade", "estado", "cep", "telefone", "site", "cnpj"],
+      "onMiss": ["whatsapp.account", "unknown"]
+    },
+    {
+      "id": "whatsapp.account",
+      "step": "whatsapp",
+      "match": {
+        "urlIncludes": ["whatsapp_account"],
+        "anyText": ["WhatsApp Business", "Nome de exibição"]
+      },
+      "fields": ["razao_social", "site"],
+      "onMiss": ["security_center.home", "unknown"]
+    },
+    {
+      "id": "security_center.home",
+      "step": "verificacao_dados",
+      "match": {
+        "urlIncludes": ["/latest/settings/security_center"],
+        "anyText": ["Central de segurança", "Security Center", "Iniciar verificação", "Start verification"]
+      },
+      "onMiss": ["verificacao.dados", "verificacao.documento", "unknown"]
+    },
+    {
+      "id": "verificacao.dados",
+      "step": "verificacao_dados",
+      "match": {
+        "anyText": ["Identificação Fiscal da Empresa", "Business verification"]
+      },
+      "fields": ["cnpj", "razao_social"],
+      "onMiss": ["verificacao.documento", "unknown"]
+    },
+    {
+      "id": "verificacao.documento",
+      "step": "verificacao_documento",
+      "match": {
+        "anyText": ["Carregar documentos", "Upload documents", "Cadastro Nacional de Pessoa Jurídica"]
+      },
+      "onMiss": ["verificacao.sms", "unknown"]
+    },
+    {
+      "id": "verificacao.sms",
+      "step": "verificacao_sms",
+      "match": {
+        "anyText": ["Código de confirmação", "Confirmation code", "SMS"]
+      },
+      "human": "otp",
+      "onMiss": ["verificacao.nome", "unknown"]
+    },
+    {
+      "id": "verificacao.nome",
+      "step": "verificacao_nome",
+      "match": {
+        "anyText": ["Nome comercial registrado", "Legal name"]
+      },
+      "fields": ["razao_social"],
+      "onMiss": ["verificacao.endereco", "unknown"]
+    },
+    {
+      "id": "verificacao.endereco",
+      "step": "verificacao_endereco",
+      "match": {
+        "anyText": ["Código postal", "Postal code"]
+      },
+      "fields": ["endereco", "cidade", "estado", "cep"],
+      "onMiss": ["verificacao.contato", "unknown"]
+    },
+    {
+      "id": "verificacao.contato",
+      "step": "verificacao_contato",
+      "match": {
+        "anyText": ["Telefone", "Website"]
+      },
+      "fields": ["telefone", "site"],
+      "onMiss": ["unknown"]
+    },
+    {
+      "id": "unknown",
+      "match": {},
+      "human": "unknown_screen"
+    }
+  ]
+}
