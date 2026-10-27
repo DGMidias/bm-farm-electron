@@ -1,9 +1,7 @@
-import { FIELD_LIMITS } from "@harness/ui-contract";
 import { inboxStatusLabel } from "@shared/mail-view";
 import { formatActivationWhen } from "@shared/sms-view";
 import type { AppConfig, ConnectionResult } from "@shared/types";
 import { useEffect, useState } from "react";
-import { Field } from "../components/Field";
 
 interface Props {
   config: AppConfig;
@@ -16,7 +14,7 @@ interface Props {
   onOpenInbox: (address: string) => Promise<void>;
 }
 
-export function EmailPage({ config, live, action, busy, onChange, onCreate, onListInboxes, onOpenInbox }: Props) {
+export function EmailPage({ config, live, action, busy, onCreate, onListInboxes, onOpenInbox }: Props) {
   const inboxes = config.email.knownInboxes ?? [];
   const [tab, setTab] = useState<"service" | "inboxes" | "messages">("service");
   const [selected, setSelected] = useState(config.email.lastAddress);
@@ -41,60 +39,21 @@ export function EmailPage({ config, live, action, busy, onChange, onCreate, onLi
   return (
     <section className="page">
       <h1>E-mail temporário</h1>
-      <p className="muted">
-        22.do só entra na validação da BM. Cole o token da conta em{" "}
-        <a href="https://22.do/document" target="_blank" rel="noreferrer">
-          22.do/document
-        </a>
-        . Gerar e ler fica nas subabas.
-      </p>
+      <p className="muted">mail.tm só entra na validação da BM. A aba principal só confere se o serviço está no ar; gerar e ler fica nas subabas.</p>
       <div className="form-panel">
-        <div className={`live-badge ${connected ? "ok" : live ? "err" : ""}`}>{live ? live.mensagem : "Checando 22.do…"}</div>
-        <div className="form-grid flush">
-          <Field
-            id="mail-url"
-            label="URL base da API"
-            kind="url"
-            maxLength={FIELD_LIMITS.url}
-            wide
-            value={config.email.baseUrl}
-            onChange={(baseUrl) => onChange({ ...config, email: { ...config.email, baseUrl } })}
-          />
-          <Field
-            id="mail-key"
-            label="Token da 22.do"
-            kind="secret"
-            maxLength={FIELD_LIMITS.secret}
-            type="password"
-            wide
-            value={config.email.apiKey}
-            onChange={(apiKey) => onChange({ ...config, email: { ...config.email, apiKey, bearer: "", bearerExpires: 0 } })}
-          />
-        </div>
+        <div className={`live-badge ${connected ? "ok" : live ? "err" : ""}`}>{live ? live.mensagem : "Checando mail.tm…"}</div>
       </div>
       <div className="subnav" role="tablist">
         <button className={tab === "service" ? "active" : ""} type="button" onClick={() => setTab("service")}>
           Serviço
         </button>
-        <button
-          className={tab === "inboxes" ? "active" : ""}
-          type="button"
-          onClick={() => setTab("inboxes")}
-        >
+        <button className={tab === "inboxes" || tab === "messages" ? "active" : ""} type="button" onClick={() => setTab("inboxes")}>
           Caixas
-        </button>
-        <button
-          className={tab === "messages" ? "active" : ""}
-          type="button"
-          disabled={!selected}
-          onClick={() => setTab("messages")}
-        >
-          Mensagens
         </button>
       </div>
       {tab === "service" ? (
         <div className="card">
-          <strong>Status da 22.do</strong>
+          <strong>Status do mail.tm</strong>
           <p className="muted">Sem gerar caixa aqui. Se o badge estiver ok, abra Caixas para criar um endereço e receber e-mail.</p>
         </div>
       ) : null}
@@ -107,7 +66,7 @@ export function EmailPage({ config, live, action, busy, onChange, onCreate, onLi
             </button>
           </div>
           <strong>Caixas geradas neste app</strong>
-          <p className="muted">A 22.do cria a caixa no POST /account. Guardamos o que o app criar e o que o POST /inbox enxergar.</p>
+          <p className="muted">O mail.tm não lista histórico da conta. Guardamos o que o app criar e o GET confirmar.</p>
           {inboxes.length === 0 ? (
             <p className="muted">Nenhuma caixa ainda. Gere uma para receber confirmação.</p>
           ) : (
@@ -125,7 +84,12 @@ export function EmailPage({ config, live, action, busy, onChange, onCreate, onLi
                 <tbody>
                   {inboxes.map((item) => (
                     <tr key={item.id || item.address}>
-                      <td>{item.address}</td>
+                      <td>
+                        <div className="phone-cell">
+                          <span>{item.address}</span>
+                          <CopyButton label="Copiar e-mail" value={item.address} />
+                        </div>
+                      </td>
                       <td>
                         <span className={`badge ${item.active ? "ok" : ""}`}>{inboxStatusLabel(item.active)}</span>
                       </td>
@@ -142,7 +106,7 @@ export function EmailPage({ config, live, action, busy, onChange, onCreate, onLi
                             void onOpenInbox(item.address);
                           }}
                         >
-                          Abrir
+                          Mensagens
                         </button>
                       </td>
                     </tr>
@@ -187,5 +151,23 @@ export function EmailPage({ config, live, action, busy, onChange, onCreate, onLi
         </div>
       ) : null}
     </section>
+  );
+}
+
+function CopyButton({ label, value }: { label: string; value: string }) {
+  if (!value) return null;
+  return (
+    <button
+      className="copy-btn"
+      type="button"
+      title={label}
+      aria-label={label}
+      onClick={() => void navigator.clipboard?.writeText(value)}
+    >
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+        <rect width="14" height="14" x="8" y="8" rx="2" />
+        <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+      </svg>
+    </button>
   );
 }

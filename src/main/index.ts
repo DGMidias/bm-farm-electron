@@ -7,7 +7,7 @@ import { validateEmpresa } from "@shared/empresa";
 import type { AppConfig, HistoryEvent } from "@shared/types";
 import { listAdsPowerProfiles, testAdsPower } from "./adspower";
 import { FarmEngine, loadPageMap } from "./engine";
-import { createInbox, emailReady, probeInbox, rememberInbox, refreshInboxMessages, testEmail } from "./mail-tm";
+import { createInbox, probeInbox, rememberInbox, refreshInboxMessages, testEmail } from "./mail-tm";
 import { configureLogger, listLogs, log, logError, onLog } from "./log";
 import { cancelSmsActivation, createSmsNumber, listSmsActivations, listSmsServices, normalizeDdd, normalizeSmsBase, persistActivationSnapshot, readSmsActivation, rememberActivation, sanitizeSmsKey, testSms } from "./sms";
 import { LocalStore } from "./store";
@@ -167,17 +167,13 @@ app.whenReady().then(() => {
     const config = store.readConfig();
     return engine.startProfile(config.adspower, config.adspower.testProfile);
   });
-  handle("email:test", async () => {
-    const config = store.readConfig();
-    const result = await testEmail(config.email);
-    store.writeConfig(config);
-    return result;
-  });
+  handle("email:test", () => testEmail());
   handle("email:create", async () => {
     const config = store.readConfig();
-    if (!emailReady(config.email)) throw new Error("E-mail só é usado quando URL e token da 22.do estão configurados.");
     const inbox = await createInbox(config.email);
     config.email.lastAddress = inbox.address;
+    config.email.lastToken = inbox.token;
+    config.email.password = inbox.password;
     config.email.knownInboxes = rememberInbox(config.email.knownInboxes, inbox);
     store.writeConfig(config);
     log("info", "email", `caixa ${inbox.address}`);
@@ -187,7 +183,7 @@ app.whenReady().then(() => {
     const config = store.readConfig();
     const next = [];
     for (const inbox of config.email.knownInboxes ?? []) {
-      next.push(await probeInbox(config.email, inbox));
+      next.push(await probeInbox(inbox));
     }
     config.email.knownInboxes = next;
     store.writeConfig(config);
@@ -196,19 +192,20 @@ app.whenReady().then(() => {
   handle("email:list", async (address) => {
     const config = store.readConfig();
     const wanted = String(address || config.email.lastAddress || "").trim();
-    if (!wanted || !emailReady(config.email)) return [];
     const current = (config.email.knownInboxes ?? []).find((item) => item.address === wanted);
+    if (!current?.token && !config.email.lastToken) return [];
     const inbox = current ?? {
       id: wanted,
       address: wanted,
-      token: "",
-      password: "",
+      token: config.email.lastToken,
+      password: config.email.password,
       createdAt: new Date().toISOString(),
       active: true,
       messages: [],
     };
-    const refreshed = await refreshInboxMessages(config.email, inbox);
+    const refreshed = await refreshInboxMessages(inbox);
     config.email.lastAddress = refreshed.address;
+    config.email.lastToken = refreshed.token;
     config.email.knownInboxes = rememberInbox(config.email.knownInboxes, refreshed);
     store.writeConfig(config);
     return refreshed.messages;

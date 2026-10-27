@@ -1,4 +1,4 @@
-import { emailReady, extractValidationCode, inboxStatusLabel, mapMailMessage, mergeSeenMessages, normalizeEmailBase, rememberInbox } from "../../src/main/mail-tm";
+import { extractValidationCode, inboxStatusLabel, mapMailMessage, mergeSeenMessages, rememberInbox } from "../../src/main/mail-tm";
 import { smsReady } from "../../src/main/sms";
 import { describe, expect, it } from "vitest";
 
@@ -23,23 +23,6 @@ describe("adapters", () => {
     expect(merged.map((item) => item.id).sort()).toEqual(["m1", "m2"]);
     expect(inboxStatusLabel(true)).toBe("ATIVO");
     expect(inboxStatusLabel(false)).toBe("SEM ACESSO");
-  });
-
-  it("22.do só fica pronto com URL e token e lê o envelope da inbox", () => {
-    expect(normalizeEmailBase("https://22.do/document")).toBe("https://22.do/api/v2");
-    expect(emailReady({ provider: "22.do", baseUrl: "", apiKey: "x", bearer: "", bearerExpires: 0, lastAddress: "", knownInboxes: [] })).toBe(false);
-    expect(emailReady({ provider: "22.do", baseUrl: "https://22.do/api/v2", apiKey: "x", bearer: "", bearerExpires: 0, lastAddress: "", knownInboxes: [] })).toBe(true);
-    const msg = mapMailMessage({
-      messageId: "1589e29186e7d311882f8d7b5e07b3d5",
-      from: "noreply@fb.com",
-      subject: "Confirme",
-      body: "código 123456",
-      time: 1745411165,
-    });
-    expect(msg.id).toBe("1589e29186e7d311882f8d7b5e07b3d5");
-    expect(msg.from).toBe("noreply@fb.com");
-    expect(msg.intro).toBe("código 123456");
-    expect(msg.receivedAt).toBe(new Date(1745411165 * 1000).toISOString());
   });
 
   it("extrai código da validação", () => {

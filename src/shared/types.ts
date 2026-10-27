@@ -17,12 +17,10 @@ export interface SmsConfig {
 }
 
 export interface EmailConfig {
-  provider: "22.do";
-  baseUrl: string;
-  apiKey: string;
-  bearer: string;
-  bearerExpires: number;
+  provider: "mail.tm";
+  password: string;
   lastAddress: string;
+  lastToken: string;
   knownInboxes: MailInbox[];
 }
 
@@ -188,12 +186,10 @@ export const DEFAULT_CONFIG: AppConfig = {
     activationChanges: [],
   },
   email: {
-    provider: "22.do",
-    baseUrl: "https://22.do/api/v2",
-    apiKey: "",
-    bearer: "",
-    bearerExpires: 0,
+    provider: "mail.tm",
+    password: "",
     lastAddress: "",
+    lastToken: "",
     knownInboxes: [],
   },
   adspower: {

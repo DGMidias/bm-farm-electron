@@ -2,6 +2,18 @@
 
 Formato: data · o que mudou · por que · o que não desfazer.
 
+## 2026-10-27 — Caixas: copiar e-mail e Mensagens só pela listagem
+
+- **O quê:** cada linha tem copiar endereço e o botão **Mensagens** (no lugar de Abrir). A subaba Mensagens some do menu; só abre pela ação daquela caixa. O item lateral fica ícone + **Email (mail.tm)**.
+- **Por quê:** a subaba solta não dizia de qual caixa era; copiar o endereço era o passo que faltava para testar o recebimento.
+- **Não desfazer:** Serviço e Caixas continuam no subnav; o GET da caixa aberta segue a cada 5s.
+
+## 2026-10-26 — E-mail volta para mail.tm
+
+- **O quê:** a 22.do sai. O e-mail usa de novo `api.mail.tm` (domínio, criar conta, token por caixa). Menu volta a **2 · E-mail**.
+- **Por quê:** a 22.do cobra por chamada de API; o mail.tm cobre gerar caixa e ler mensagem sem essa taxa.
+- **Não desfazer:** as subabas Serviço / Caixas / Mensagens e o histórico local continuam.
+
 ## 2026-10-26 — E-mail passa a ser 22.do
 
 - **O quê:** mail.tm sai. A aba usa `https://22.do/api/v2` (token → Bearer, POST /account, POST /inbox). Menu lateral fica ícone + **Email (22.do)**. Sem token configurado, o serviço não roda.

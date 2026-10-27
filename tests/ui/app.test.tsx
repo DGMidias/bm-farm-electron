@@ -18,7 +18,7 @@ describe("UI contrato", () => {
     const user = userEvent.setup();
     render(<App />);
     expect(screen.getByRole("button", { name: /Número Virtual/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Email \(22\.do\)/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Email \(mail\.tm\)/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /AdsPower/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Farm de BM/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Histórico/ })).toBeInTheDocument();
@@ -31,8 +31,9 @@ describe("UI contrato", () => {
     expect(screen.getByRole("button", { name: /Números/ })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /Números/ }));
     expect(screen.getByText(/Ativações em andamento/)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /Email \(22\.do\)/ }));
+    await user.click(screen.getByRole("button", { name: /Email \(mail\.tm\)/ }));
     expect(screen.getByRole("button", { name: /Caixas/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Mensagens$/ })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /Caixas/ }));
     expect(screen.getByRole("button", { name: /Gerar caixa nova/ })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /AdsPower/ }));
@@ -202,9 +203,11 @@ describe("UI contrato", () => {
     expect(screen.queryByRole("button", { name: /Gerar caixa nova/ })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /Caixas/ }));
     expect(screen.getByText("bmteste@mail.tm")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Copiar e-mail/ })).toBeInTheDocument();
     expect(screen.getByText("ATIVO")).toBeInTheDocument();
     expect(onListInboxes).toHaveBeenCalledTimes(1);
-    await user.click(screen.getByRole("button", { name: /Abrir/ }));
+    expect(screen.queryByRole("tab", { name: /^Mensagens$/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^Mensagens$/ }));
     expect(onOpenInbox).toHaveBeenCalledWith("bmteste@mail.tm");
     expect(screen.getByText("Confirme sua BM")).toBeInTheDocument();
     expect(screen.getByText(/meta@fb.com/)).toBeInTheDocument();

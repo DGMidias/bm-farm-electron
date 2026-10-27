@@ -19,7 +19,7 @@ npm run test:harness
 ## Menus
 
 1. SMS — API numero-virtual
-2. Email (22.do) — temporário, só validação
+2. Email (mail.tm) — temporário, só validação
 3. AdsPower — API local + chave
 4. Farm de BM — cards no formato empresa.json + perfil
 5. Histórico — logs locais sem segredo

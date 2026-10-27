@@ -7,11 +7,11 @@ import { FarmPage } from "./pages/FarmPage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { SmsPage } from "./pages/SmsPage";
 import numeroVirtualLogo from "./assets/numero-virtual.png";
-import twentyTwoLogo from "./assets/22do.svg";
+import mailTmLogo from "./assets/mail-tm.svg";
 
 const MENUS: Array<{ id: MenuId; label: string; icon?: string }> = [
   { id: "sms", label: "Número Virtual", icon: numeroVirtualLogo },
-  { id: "email", label: "Email (22.do)", icon: twentyTwoLogo },
+  { id: "email", label: "Email (mail.tm)", icon: mailTmLogo },
   { id: "adspower", label: "3 · AdsPower" },
   { id: "farm", label: "4 · Farm de BM" },
   { id: "history", label: "5 · Histórico" },
@@ -89,7 +89,7 @@ export function App() {
       stop = true;
       window.clearInterval(timer);
     };
-  }, [menu, config.email.apiKey, config.email.baseUrl]);
+  }, [menu]);
 
   useEffect(() => {
     if (menu !== "sms" || !smsResult?.ok) return;
