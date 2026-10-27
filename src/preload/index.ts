@@ -9,9 +9,24 @@ const api = {
   addHistory: (event: Omit<HistoryEvent, "id" | "timestamp">) =>
     ipcRenderer.invoke("history:add", event) as Promise<HistoryEvent[]>,
   testSms: () => ipcRenderer.invoke("sms:test"),
+  listSmsServices: () => ipcRenderer.invoke("sms:services"),
+  createSmsNumber: () => ipcRenderer.invoke("sms:create"),
+  readSms: (activationId?: string) => ipcRenderer.invoke("sms:inbox", activationId),
+  listSmsNumbers: () => ipcRenderer.invoke("sms:list-numbers"),
+  cancelSmsNumber: (activationId: string) => ipcRenderer.invoke("sms:cancel", activationId),
+  testEmail: () => ipcRenderer.invoke("email:test"),
   testAdsPower: () => ipcRenderer.invoke("adspower:test"),
+  listAdsPowerProfiles: () => ipcRenderer.invoke("adspower:profiles"),
+  probeAdsPower: () => ipcRenderer.invoke("adspower:probe"),
   createInbox: () => ipcRenderer.invoke("email:create"),
-  listMail: () => ipcRenderer.invoke("email:list"),
+  listInboxes: () => ipcRenderer.invoke("email:list-inboxes"),
+  listMail: (address?: string) => ipcRenderer.invoke("email:list", address),
+  listLogs: () => ipcRenderer.invoke("log:list"),
+  onLog: (handler: (entry: unknown) => void) => {
+    const listener = (_event: unknown, entry: unknown) => handler(entry);
+    ipcRenderer.on("log:entry", listener);
+    return () => ipcRenderer.removeListener("log:entry", listener);
+  },
   checkUpdate: () => ipcRenderer.invoke("update:check"),
   applyUpdate: () => ipcRenderer.invoke("update:apply"),
   startSession: (empresaId: string) => ipcRenderer.invoke("engine:start", empresaId),

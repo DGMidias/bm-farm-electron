@@ -1,5 +1,6 @@
 import { platformId } from "@harness/compat";
 import type { AdsPowerConfig, ConnectionResult } from "@shared/types";
+import { log, logError } from "./log";
 
 export function profileParams(profileId: string): Record<string, string> {
   if (!/^[A-Za-z0-9]+$/.test(profileId)) {
@@ -29,6 +30,7 @@ export async function adspowerRequest(
     if (/disorderedid/i.test(msg)) {
       throw new Error("ID do perfil inválido. Use serial_number (2) ou user_id.");
     }
+    log("error", "adspower", `${path} → ${msg}`);
     throw new Error(msg);
   }
   return payload.data ?? {};
@@ -37,9 +39,29 @@ export async function adspowerRequest(
 export async function testAdsPower(config: AdsPowerConfig): Promise<ConnectionResult> {
   try {
     await adspowerRequest(config, "/status");
-    return { ok: true, mensagem: `AdsPower ok em ${config.baseUrl} (${platformId()}).` };
+    return { ok: true, mensagem: `AdsPower local ok em ${config.baseUrl} (${platformId()}).` };
   } catch (error) {
+    logError("adspower", error, "teste API local");
     return { ok: false, mensagem: error instanceof Error ? error.message : "Falha no AdsPower." };
+  }
+}
+
+export async function listAdsPowerProfiles(config: AdsPowerConfig): Promise<Array<{ user_id: string; serial_number?: string; name?: string }>> {
+  try {
+    const data = (await adspowerRequest(config, "/api/v1/user/list", { page: 1, page_size: 50 })) as {
+      list?: Array<{ user_id?: string; serial_number?: string; name?: string }>;
+    };
+    return (data.list ?? [])
+      .filter((item) => item.user_id)
+      .map((item) => ({
+        user_id: String(item.user_id),
+        serial_number: item.serial_number ? String(item.serial_number) : undefined,
+        name: item.name,
+      }));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (/paid|subscription|plano/i.test(message)) return [];
+    throw error;
   }
 }
 

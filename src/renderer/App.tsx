@@ -1,15 +1,17 @@
 import type { DesktopApi } from "../preload";
-import { DEFAULT_CONFIG, type AppConfig, type ConnectionResult, type EngineStatus, type HistoryEvent, type HumanPause, type MailMessage, type MenuId, type UpdateCheckResult } from "@shared/types";
-import { useEffect, useMemo, useState } from "react";
+import { DEFAULT_CONFIG, type AppConfig, type AppLog, type ConnectionResult, type EngineStatus, type HistoryEvent, type HumanPause, type MenuId, type SmsActivation, type SmsService, type UpdateCheckResult } from "@shared/types";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AdsPowerPage } from "./pages/AdsPowerPage";
 import { EmailPage } from "./pages/EmailPage";
 import { FarmPage } from "./pages/FarmPage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { SmsPage } from "./pages/SmsPage";
+import numeroVirtualLogo from "./assets/numero-virtual.png";
+import twentyTwoLogo from "./assets/22do.svg";
 
-const MENUS: Array<{ id: MenuId; label: string }> = [
-  { id: "sms", label: "1 · SMS" },
-  { id: "email", label: "2 · E-mail" },
+const MENUS: Array<{ id: MenuId; label: string; icon?: string }> = [
+  { id: "sms", label: "Número Virtual", icon: numeroVirtualLogo },
+  { id: "email", label: "Email (22.do)", icon: twentyTwoLogo },
   { id: "adspower", label: "3 · AdsPower" },
   { id: "farm", label: "4 · Farm de BM" },
   { id: "history", label: "5 · Histórico" },
@@ -24,19 +26,31 @@ export function App() {
   const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG);
   const [history, setHistory] = useState<HistoryEvent[]>([]);
   const [smsResult, setSmsResult] = useState<ConnectionResult>();
+  const [smsAction, setSmsAction] = useState<ConnectionResult>();
+  const [emailResult, setEmailResult] = useState<ConnectionResult>();
+  const [emailAction, setEmailAction] = useState<ConnectionResult>();
   const [adsResult, setAdsResult] = useState<ConnectionResult>();
-  const [messages, setMessages] = useState<MailMessage[]>([]);
+  const [smsServices, setSmsServices] = useState<SmsService[]>([]);
+  const [smsActivation, setSmsActivation] = useState<SmsActivation>();
+  const [busy, setBusy] = useState(false);
   const [update, setUpdate] = useState<UpdateCheckResult>();
   const [engine, setEngine] = useState<EngineStatus>({ running: false, mensagem: "Motor ocioso." });
   const [pause, setPause] = useState<HumanPause>();
   const [version, setVersion] = useState("0.1.0");
+  const [logs, setLogs] = useState<AppLog[]>([]);
 
   useEffect(() => {
     void desktop()?.getConfig().then(setConfig);
     void desktop()?.getHistory().then(setHistory);
     void desktop()?.engineStatus().then(setEngine);
     void desktop()?.platform().then((info) => setVersion(info.version));
-    return desktop()?.onPause((next) => setPause(next as HumanPause));
+    void desktop()?.listLogs().then((entries) => setLogs((entries as AppLog[]) ?? []));
+    const offLog = desktop()?.onLog((entry) => setLogs((current) => [entry as AppLog, ...current].slice(0, 300)));
+    const offPause = desktop()?.onPause((next) => setPause(next as HumanPause));
+    return () => {
+      offLog?.();
+      offPause?.();
+    };
   }, []);
 
   const persist = async (next: AppConfig) => {
@@ -45,14 +59,143 @@ export function App() {
     if (saved) setConfig(saved);
   };
 
+  useEffect(() => {
+    if (menu !== "sms") return;
+    let stop = false;
+    const poll = async () => {
+      const result = await desktop()?.testSms();
+      if (stop || !result) return;
+      setSmsResult(result);
+    };
+    void poll();
+    const timer = window.setInterval(() => void poll(), 5000);
+    return () => {
+      stop = true;
+      window.clearInterval(timer);
+    };
+  }, [menu, config.sms.apiKey, config.sms.baseUrl]);
+
+  useEffect(() => {
+    if (menu !== "email") return;
+    let stop = false;
+    const poll = async () => {
+      const result = await desktop()?.testEmail();
+      if (stop || !result) return;
+      setEmailResult(result);
+    };
+    void poll();
+    const timer = window.setInterval(() => void poll(), 5000);
+    return () => {
+      stop = true;
+      window.clearInterval(timer);
+    };
+  }, [menu, config.email.apiKey, config.email.baseUrl]);
+
+  useEffect(() => {
+    if (menu !== "sms" || !smsResult?.ok) return;
+    let stop = false;
+    void desktop()
+      ?.listSmsServices()
+      .then((list) => {
+        if (!stop) setSmsServices(list ?? []);
+      })
+      .catch(() => {
+        if (!stop) setSmsServices([]);
+      });
+    return () => {
+      stop = true;
+    };
+  }, [menu, smsResult?.ok, config.sms.apiKey]);
+
+  const refreshInboxes = useCallback(async () => {
+    try {
+      await desktop()?.listInboxes();
+      const saved = await desktop()?.getConfig();
+      if (saved) setConfig(saved);
+    } catch (error) {
+      setEmailAction({ ok: false, mensagem: error instanceof Error ? error.message : "Falha ao listar caixas." });
+    }
+  }, []);
+
+  const openInbox = useCallback(async (address: string) => {
+    try {
+      await desktop()?.listMail(address);
+      const saved = await desktop()?.getConfig();
+      if (saved) setConfig(saved);
+    } catch (error) {
+      setEmailAction({ ok: false, mensagem: error instanceof Error ? error.message : "Falha ao ler e-mail." });
+    }
+  }, []);
+
+  const refreshSmsNumbers = useCallback(async () => {
+    try {
+      await desktop()?.listSmsNumbers();
+      const saved = await desktop()?.getConfig();
+      if (saved) setConfig(saved);
+    } catch (error) {
+      setSmsAction({ ok: false, mensagem: error instanceof Error ? error.message : "Falha ao listar números." });
+    }
+  }, []);
+
   const page = useMemo(() => {
     if (menu === "sms") {
       return (
         <SmsPage
           config={config}
-          result={smsResult}
+          live={smsResult}
+          action={smsAction}
+          services={smsServices}
+          activation={smsActivation}
+          busy={busy}
           onChange={(next) => void persist(next)}
-          onTest={async () => setSmsResult(await desktop()?.testSms())}
+          onListNumbers={refreshSmsNumbers}
+          onCreate={async () => {
+            setBusy(true);
+            try {
+              const activation = await desktop()?.createSmsNumber();
+              setSmsActivation(activation);
+              const saved = await desktop()?.getConfig();
+              if (saved) setConfig(saved);
+              setSmsAction({
+                ok: true,
+                mensagem: activation ? `Número ${activation.phone}${activation.ddd ? ` · DDD ${activation.ddd}` : ""}` : "Número gerado.",
+              });
+            } catch (error) {
+              setSmsAction({ ok: false, mensagem: error instanceof Error ? error.message : "Falha ao gerar número." });
+            } finally {
+              setBusy(false);
+            }
+          }}
+          onInbox={async (activationId) => {
+            setBusy(true);
+            try {
+              const activation = await desktop()?.readSms(activationId);
+              setSmsActivation(activation);
+              const saved = await desktop()?.getConfig();
+              if (saved) setConfig(saved);
+              const last = [...(activation?.messages ?? [])].sort((a, b) => a.receivedAt.localeCompare(b.receivedAt)).at(-1);
+              setSmsAction({
+                ok: true,
+                mensagem: last ? `SMS: ${last.code ?? last.text}` : "Número ativo, ainda sem SMS.",
+              });
+            } catch (error) {
+              setSmsAction({ ok: false, mensagem: error instanceof Error ? error.message : "Falha ao ler SMS." });
+            } finally {
+              setBusy(false);
+            }
+          }}
+          onCancel={async (activationId) => {
+            setBusy(true);
+            try {
+              await desktop()?.cancelSmsNumber(activationId);
+              await refreshSmsNumbers();
+              setSmsAction({ ok: true, mensagem: "Número cancelado. Reembolso conforme a regra da API." });
+            } catch (error) {
+              setSmsAction({ ok: false, mensagem: error instanceof Error ? error.message : "Falha ao cancelar número." });
+            } finally {
+              setBusy(false);
+            }
+          }}
         />
       );
     }
@@ -60,16 +203,25 @@ export function App() {
       return (
         <EmailPage
           config={config}
-          messages={messages}
+          live={emailResult}
+          action={emailAction}
+          busy={busy}
           onChange={(next) => void persist(next)}
           onCreate={async () => {
-            const created = await desktop()?.createInbox();
-            if (created?.address) {
-              setConfig((current) => ({ ...current, email: { ...current.email, lastAddress: created.address } }));
+            setBusy(true);
+            try {
+              const created = await desktop()?.createInbox();
+              const saved = await desktop()?.getConfig();
+              if (saved) setConfig(saved);
+              setEmailAction({ ok: true, mensagem: created?.address ? `Caixa ${created.address}` : "Caixa gerada." });
+            } catch (error) {
+              setEmailAction({ ok: false, mensagem: error instanceof Error ? error.message : "Falha ao gerar e-mail." });
+            } finally {
+              setBusy(false);
             }
-            setMessages(created?.messages ?? []);
           }}
-          onRefresh={async () => setMessages((await desktop()?.listMail()) ?? [])}
+          onListInboxes={refreshInboxes}
+          onOpenInbox={openInbox}
         />
       );
     }
@@ -78,12 +230,35 @@ export function App() {
         <AdsPowerPage
           config={config}
           result={adsResult}
+          engine={engine}
+          busy={busy}
           onChange={(next) => void persist(next)}
           onTest={async () => setAdsResult(await desktop()?.testAdsPower())}
+          onProbe={async () => {
+            setBusy(true);
+            try {
+              const status = await desktop()?.probeAdsPower();
+              if (status) setEngine(status);
+              setAdsResult({ ok: true, mensagem: status?.mensagem ?? "Navegador sob controle via CDP." });
+            } catch (error) {
+              setAdsResult({ ok: false, mensagem: error instanceof Error ? error.message : "Falha ao controlar o AdsPower." });
+            } finally {
+              setBusy(false);
+            }
+          }}
+          onStop={async () => {
+            setBusy(true);
+            try {
+              setEngine((await desktop()?.stopSession()) ?? { running: false, mensagem: "Motor ocioso." });
+              setAdsResult({ ok: true, mensagem: "Sessão AdsPower encerrada." });
+            } finally {
+              setBusy(false);
+            }
+          }}
         />
       );
     }
-    if (menu === "history") return <HistoryPage events={history} />;
+    if (menu === "history") return <HistoryPage events={history} logs={logs} />;
     return (
       <FarmPage
         config={config}
@@ -103,7 +278,7 @@ export function App() {
         }}
       />
     );
-  }, [adsResult, config, engine, history, menu, messages, smsResult]);
+  }, [adsResult, busy, config, emailAction, emailResult, engine, history, logs, menu, openInbox, refreshInboxes, refreshSmsNumbers, smsAction, smsActivation, smsResult, smsServices]);
 
   return (
     <div className="app">
@@ -115,6 +290,7 @@ export function App() {
         <nav className="nav">
           {MENUS.map((item) => (
             <button key={item.id} className={menu === item.id ? "active" : ""} type="button" onClick={() => setMenu(item.id)}>
+              {item.icon ? <img className="nav-logo" src={item.icon} alt="" /> : null}
               {item.label}
             </button>
           ))}

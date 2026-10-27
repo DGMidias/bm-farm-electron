@@ -6,6 +6,7 @@ import { FIELDS_FOR, type EmpresaCard } from "@shared/empresa";
 import { detectScreen, type PageMap } from "@shared/map";
 import type { AdsPowerConfig, EngineStatus, HumanPause, ScreenSnapshot } from "@shared/types";
 import { startProfile, stopProfile } from "./adspower";
+import { log, logError } from "./log";
 import { smsReady } from "./sms";
 
 export function loadPageMap(repoRoot: string): PageMap {
@@ -39,17 +40,27 @@ export class FarmEngine extends EventEmitter {
     };
   }
 
-  async start(config: AdsPowerConfig, card: EmpresaCard): Promise<EngineStatus> {
+  async startProfile(config: AdsPowerConfig, profileId: string): Promise<EngineStatus> {
     if (this.running) throw new Error("Já existe uma sessão. Encerre antes de abrir outra.");
-    if (!card.adspower_profile.trim()) throw new Error("Selecione o perfil AdsPower do card.");
-    const ws = await startProfile(config, card.adspower_profile.trim());
+    if (!profileId.trim()) throw new Error("Informe o perfil AdsPower (user_id ou serial).");
+    const ws = await startProfile(config, profileId.trim());
     this.browser = await chromium.connectOverCDP(ws);
-    this.context = this.browser.contexts()[0] ?? await this.browser.newContext();
-    this.page = this.context.pages()[0] ?? await this.context.newPage();
-    this.profile = card.adspower_profile.trim();
+    this.context = this.browser.contexts()[0] ?? (await this.browser.newContext());
+    this.page = this.context.pages()[0] ?? (await this.context.newPage());
+    this.profile = profileId.trim();
     this.running = true;
+    const url = this.page.url();
+    const title = await this.page.title();
     this.emit("status", this.status());
-    return this.status();
+    log("info", "adspower", `CDP perfil ${this.profile} ${title} ${url}`);
+    return {
+      ...this.status(),
+      mensagem: `CDP conectado no perfil ${this.profile}. Aba: ${title || "(sem título)"} · ${url || "sem URL"}.`,
+    };
+  }
+
+  async start(config: AdsPowerConfig, card: EmpresaCard): Promise<EngineStatus> {
+    return this.startProfile(config, card.adspower_profile);
   }
 
   async snapshot(): Promise<ScreenSnapshot> {
@@ -136,6 +147,7 @@ export class FarmEngine extends EventEmitter {
       }
     }
     this.profile = null;
+    log("info", "adspower", "sessão encerrada");
     this.emit("status", this.status());
   }
 }

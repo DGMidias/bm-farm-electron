@@ -2,12 +2,14 @@ import { app, BrowserWindow, ipcMain, shell } from "electron";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { joinPath, modKey, platformId, userDataPath } from "@harness/compat";
+import { DEFAULT_DDD, isBrDdd } from "@shared/ddd";
 import { validateEmpresa } from "@shared/empresa";
 import type { AppConfig, HistoryEvent } from "@shared/types";
-import { testAdsPower } from "./adspower";
+import { listAdsPowerProfiles, testAdsPower } from "./adspower";
 import { FarmEngine, loadPageMap } from "./engine";
-import { createInbox, listMessages } from "./mail-tm";
-import { testSms } from "./sms";
+import { createInbox, emailReady, probeInbox, rememberInbox, refreshInboxMessages, testEmail } from "./mail-tm";
+import { configureLogger, listLogs, log, logError, onLog } from "./log";
+import { cancelSmsActivation, createSmsNumber, listSmsActivations, listSmsServices, normalizeDdd, normalizeSmsBase, persistActivationSnapshot, readSmsActivation, rememberActivation, sanitizeSmsKey, testSms } from "./sms";
 import { LocalStore } from "./store";
 import { checkUpdate, downloadAndInstall, fetchLatest } from "./updater";
 
@@ -50,47 +52,169 @@ function createWindow(): void {
   }
 }
 
+function broadcastLog(entry: unknown): void {
+  for (const window of BrowserWindow.getAllWindows()) {
+    window.webContents.send("log:entry", entry);
+  }
+}
+
+function handle(channel: string, fn: (...args: unknown[]) => unknown): void {
+  ipcMain.handle(channel, async (_event, ...args: unknown[]) => {
+    try {
+      return await fn(...args);
+    } catch (error) {
+      logError(channel, error);
+      throw error;
+    }
+  });
+}
+
 app.whenReady().then(() => {
+  configureLogger(store.root);
+  onLog(broadcastLog);
+  log("info", "app", `processo principal pronto (${platformId()})`);
   const snapshotsDir = joinPath(repoRoot, "mapas", "snapshots");
   mkdirSync(snapshotsDir, { recursive: true });
 
-  ipcMain.handle("app:platform", () => ({
+  handle("app:platform", () => ({
     id: platformId(),
     modKey: modKey(),
     version: app.getVersion(),
   }));
 
-  ipcMain.handle("config:get", () => store.readConfig());
-  ipcMain.handle("config:save", (_event, config: AppConfig) => {
-    store.writeConfig(config);
+  handle("config:get", () => store.readConfig());
+  handle("config:save", (config) => {
+    const next = config as AppConfig;
+    next.sms.apiKey = sanitizeSmsKey(next.sms.apiKey);
+    next.sms.baseUrl = normalizeSmsBase(next.sms.baseUrl);
+    if (next.sms.countryCode.trim().toUpperCase() === "BRA") next.sms.countryCode = "BR";
+    const ddd = normalizeDdd(next.sms.ddd);
+    next.sms.ddd = isBrDdd(ddd) ? ddd : DEFAULT_DDD;
+    store.writeConfig(next);
     return store.readConfig();
   });
-  ipcMain.handle("history:list", () => store.readHistory());
-  ipcMain.handle("history:add", (_event, partial: Omit<HistoryEvent, "id" | "timestamp">) => {
+  handle("history:list", () => store.readHistory());
+  handle("history:add", (partial) => {
     return store.appendHistory({
-      ...partial,
+      ...(partial as Omit<HistoryEvent, "id" | "timestamp">),
       id: crypto.randomUUID(),
       timestamp: new Date().toISOString(),
     });
   });
-  ipcMain.handle("sms:test", async () => testSms(store.readConfig().sms));
-  ipcMain.handle("adspower:test", async () => testAdsPower(store.readConfig().adspower));
-  ipcMain.handle("email:create", async () => {
+  handle("log:list", () => listLogs());
+  handle("sms:test", () => testSms(store.readConfig().sms));
+  handle("sms:services", () => listSmsServices(store.readConfig().sms));
+  handle("sms:create", async () => {
     const config = store.readConfig();
+    const activation = await createSmsNumber(config.sms);
+    config.sms.lastActivationId = activation.id;
+    config.sms.lastPhone = activation.phone;
+    const remembered = rememberActivation(config.sms.knownActivations, activation);
+    const live = await listSmsActivations({ ...config.sms, knownActivations: remembered });
+    const snapshot = persistActivationSnapshot(config.sms, activation.id ? [activation, ...live] : live);
+    config.sms.knownActivations = snapshot.knownActivations;
+    config.sms.activationChanges = snapshot.activationChanges;
+    store.writeConfig(config);
+    log("info", "sms", `número gerado ${activation.phone} ddd=${activation.ddd ?? config.sms.ddd} status=${activation.status}`);
+    return activation;
+  });
+  handle("sms:inbox", async (activationId) => {
+    const config = store.readConfig();
+    const id = String(activationId || config.sms.lastActivationId || "").trim();
+    if (!id) throw new Error("Gere um número ou informe o ID da ativação para ler o SMS.");
+    const activation = await readSmsActivation(config.sms, id);
+    config.sms.lastActivationId = activation.id;
+    config.sms.lastPhone = activation.phone;
+    const snapshot = persistActivationSnapshot(config.sms, [activation]);
+    config.sms.knownActivations = snapshot.knownActivations;
+    config.sms.activationChanges = snapshot.activationChanges;
+    store.writeConfig(config);
+    return activation;
+  });
+  handle("sms:list-numbers", async () => {
+    const config = store.readConfig();
+    const live = await listSmsActivations(config.sms);
+    const snapshot = persistActivationSnapshot(config.sms, live);
+    config.sms.knownActivations = snapshot.knownActivations;
+    config.sms.activationChanges = snapshot.activationChanges;
+    store.writeConfig(config);
+    return snapshot.knownActivations;
+  });
+  handle("sms:cancel", async (activationId) => {
+    const id = String(activationId ?? "").trim();
+    if (!id) throw new Error("Informe o número para cancelar.");
+    const config = store.readConfig();
+    const result = await cancelSmsActivation(config.sms, id);
+    const updated = {
+      ...(config.sms.knownActivations ?? []).find((item) => item.id === id),
+      id,
+      phone: config.sms.knownActivations?.find((item) => item.id === id)?.phone ?? "",
+      status: result.status || "cancelled",
+      messages: config.sms.knownActivations?.find((item) => item.id === id)?.messages ?? [],
+    };
+    config.sms.knownActivations = rememberActivation(config.sms.knownActivations, updated);
+    const live = await listSmsActivations(config.sms);
+    const snapshot = persistActivationSnapshot(config.sms, live);
+    config.sms.knownActivations = snapshot.knownActivations;
+    config.sms.activationChanges = snapshot.activationChanges;
+    store.writeConfig(config);
+    log("info", "sms", `cancelou ${id} status=${result.status} reembolso=${result.refunded ? "sim" : "pendente"}`);
+    return result;
+  });
+  handle("adspower:test", () => testAdsPower(store.readConfig().adspower));
+  handle("adspower:profiles", () => listAdsPowerProfiles(store.readConfig().adspower));
+  handle("adspower:probe", () => {
+    const config = store.readConfig();
+    return engine.startProfile(config.adspower, config.adspower.testProfile);
+  });
+  handle("email:test", async () => {
+    const config = store.readConfig();
+    const result = await testEmail(config.email);
+    store.writeConfig(config);
+    return result;
+  });
+  handle("email:create", async () => {
+    const config = store.readConfig();
+    if (!emailReady(config.email)) throw new Error("E-mail só é usado quando URL e token da 22.do estão configurados.");
     const inbox = await createInbox(config.email);
     config.email.lastAddress = inbox.address;
-    config.email.lastToken = inbox.token;
-    config.email.password = inbox.password;
+    config.email.knownInboxes = rememberInbox(config.email.knownInboxes, inbox);
     store.writeConfig(config);
-    return { address: inbox.address, messages: [] };
+    log("info", "email", `caixa ${inbox.address}`);
+    return inbox;
   });
-  ipcMain.handle("email:list", async () => {
-    const token = store.readConfig().email.lastToken;
-    if (!token) return [];
-    return listMessages(token);
+  handle("email:list-inboxes", async () => {
+    const config = store.readConfig();
+    const next = [];
+    for (const inbox of config.email.knownInboxes ?? []) {
+      next.push(await probeInbox(config.email, inbox));
+    }
+    config.email.knownInboxes = next;
+    store.writeConfig(config);
+    return next;
   });
-  ipcMain.handle("update:check", async () => checkUpdate(app.getVersion(), store.readConfig().update.latestUrl));
-  ipcMain.handle("update:apply", async () => {
+  handle("email:list", async (address) => {
+    const config = store.readConfig();
+    const wanted = String(address || config.email.lastAddress || "").trim();
+    if (!wanted || !emailReady(config.email)) return [];
+    const current = (config.email.knownInboxes ?? []).find((item) => item.address === wanted);
+    const inbox = current ?? {
+      id: wanted,
+      address: wanted,
+      token: "",
+      password: "",
+      createdAt: new Date().toISOString(),
+      active: true,
+      messages: [],
+    };
+    const refreshed = await refreshInboxMessages(config.email, inbox);
+    config.email.lastAddress = refreshed.address;
+    config.email.knownInboxes = rememberInbox(config.email.knownInboxes, refreshed);
+    store.writeConfig(config);
+    return refreshed.messages;
+  });
+  handle("update:check", () => checkUpdate(app.getVersion(), store.readConfig().update.latestUrl));
+  handle("update:apply", async () => {
     const config = store.readConfig();
     const latest = await fetchLatest(config.update.latestUrl);
     const artifact = latest[platformId()];
@@ -99,7 +223,7 @@ app.whenReady().then(() => {
     mkdirSync(dir, { recursive: true });
     return downloadAndInstall(artifact.url, artifact.sha512, dir);
   });
-  ipcMain.handle("engine:start", async (_event, empresaId: string) => {
+  handle("engine:start", async (empresaId) => {
     const config = store.readConfig();
     const card = config.empresas.find((item) => item.id === empresaId);
     if (!card) throw new Error("Empresa não encontrada.");
@@ -119,25 +243,25 @@ app.whenReady().then(() => {
     });
     return status;
   });
-  ipcMain.handle("engine:detect", async () => engine.detect());
-  ipcMain.handle("engine:fill", async (_event, empresaId: string, step: string) => {
+  handle("engine:detect", () => engine.detect());
+  handle("engine:fill", (empresaId, step) => {
     const card = store.readConfig().empresas.find((item) => item.id === empresaId);
     if (!card) throw new Error("Empresa não encontrada.");
     return engine.fillStep(card, step as "portfolio");
   });
-  ipcMain.handle("engine:resume", (_event, pauseId: string) => {
-    engine.resume(pauseId);
+  handle("engine:resume", (pauseId) => {
+    engine.resume(String(pauseId));
     return engine.status();
   });
-  ipcMain.handle("engine:stop", async () => {
+  handle("engine:stop", async () => {
     await engine.stop(store.readConfig().adspower);
     return engine.status();
   });
-  ipcMain.handle("engine:status", () => engine.status());
-  ipcMain.handle("map:save-snapshot", async (_event, classifiedAs: string) => {
+  handle("engine:status", () => engine.status());
+  handle("map:save-snapshot", async (classifiedAs) => {
     const snapshot = await engine.snapshot();
-    snapshot.classifiedAs = classifiedAs;
-    const file = joinPath(snapshotsDir, `${Date.now()}-${classifiedAs.replace(/\W+/g, "_")}.json`);
+    snapshot.classifiedAs = String(classifiedAs);
+    const file = joinPath(snapshotsDir, `${Date.now()}-${String(classifiedAs).replace(/\W+/g, "_")}.json`);
     writeFileSync(file, JSON.stringify(snapshot, null, 2), "utf8");
     return { file, snapshot };
   });
