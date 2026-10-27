@@ -55,9 +55,19 @@ export function SmsPage({
 
   useEffect(() => {
     if (tab !== "numbers") return;
+    let running = false;
+    const tick = async () => {
+      if (running) return;
+      running = true;
+      try {
+        await onListNumbers();
+      } finally {
+        running = false;
+      }
+    };
     const poll = window.setInterval(() => {
-      void onListNumbers();
-    }, 5000);
+      void tick();
+    }, 8000);
     const clock = window.setInterval(() => setNow(Date.now()), 1000);
     return () => {
       window.clearInterval(poll);

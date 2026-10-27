@@ -15,6 +15,9 @@ describe("store IPC local", () => {
     store.writeConfig(config);
     expect(store.readConfig().sms.apiKey).toBe("supersecreta123");
     expect(store.readConfig().empresas).toEqual([]);
+    config.farm.started = true;
+    store.writeConfig(config);
+    expect(store.readConfig().empresas).toHaveLength(1);
     expect(store.redactForLog("supersecreta123")).not.toContain("supersecreta");
     store.appendHistory({
       id: "1",

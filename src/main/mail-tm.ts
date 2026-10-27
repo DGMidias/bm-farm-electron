@@ -21,7 +21,10 @@ async function json<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
-export async function createInbox(config: EmailConfig): Promise<MailInbox> {
+export async function createInbox(
+  config: EmailConfig,
+  owner?: Pick<MailInbox, "empresaId" | "razaoSocial" | "adspowerProfile">,
+): Promise<MailInbox> {
   const domains = await json<{ "hydra:member"?: Array<{ domain: string }> }>("/domains");
   const domain = domains["hydra:member"]?.[0]?.domain;
   if (!domain) throw new Error("mail.tm não retornou domínio.");
@@ -44,6 +47,9 @@ export async function createInbox(config: EmailConfig): Promise<MailInbox> {
     createdAt: new Date().toISOString(),
     active: true,
     lastCheckedAt: new Date().toISOString(),
+    empresaId: owner?.empresaId,
+    razaoSocial: owner?.razaoSocial,
+    adspowerProfile: owner?.adspowerProfile,
     messages: [],
   };
 }

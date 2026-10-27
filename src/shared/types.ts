@@ -51,6 +51,8 @@ export interface UpdateConfig {
 
 export interface FarmUiConfig {
   lastPdfDir: string;
+  batchSize: number;
+  started: boolean;
 }
 
 export interface AppConfig {
@@ -102,9 +104,37 @@ export interface UpdateCheckResult {
 
 export interface HumanPause {
   id: string;
+  empresaId?: string;
   reason: "captcha" | "otp" | "envio" | "unknown_screen" | "login";
   message: string;
   screenshotDataUrl?: string;
+}
+
+export type FarmCompanyStatus = "idle" | "running" | "paused" | "ok" | "erro";
+
+export interface FarmEvent {
+  id: string;
+  timestamp: string;
+  empresaId?: string;
+  level: "info" | "warn" | "error";
+  message: string;
+}
+
+export interface FarmCompanyRun {
+  id: string;
+  razaoSocial: string;
+  status: FarmCompanyStatus;
+  attention: boolean;
+  dismissed?: boolean;
+  pause?: HumanPause;
+  logs: FarmEvent[];
+}
+
+export interface FarmRunState {
+  running: boolean;
+  batchSize: number;
+  companies: FarmCompanyRun[];
+  mensagem: string;
 }
 
 export interface EngineStatus {
@@ -134,6 +164,9 @@ export interface MailInbox {
   createdAt: string;
   active: boolean;
   lastCheckedAt?: string;
+  empresaId?: string;
+  razaoSocial?: string;
+  adspowerProfile?: string;
   messages: MailMessage[];
 }
 
@@ -222,6 +255,8 @@ export const DEFAULT_CONFIG: AppConfig = {
   },
   farm: {
     lastPdfDir: "",
+    batchSize: 1,
+    started: false,
   },
   empresas: [],
 };

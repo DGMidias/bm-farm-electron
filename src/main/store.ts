@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { joinPath } from "@harness/compat";
+import { settingsToSave } from "@shared/farm-draft";
 import { DEFAULT_CONFIG, type AppConfig, type HistoryEvent } from "@shared/types";
 
 export interface StorePaths {
@@ -49,7 +50,7 @@ export class LocalStore {
   }
 
   writeConfig(config: AppConfig): void {
-    writeFileSync(this.file("config.json"), JSON.stringify({ ...config, empresas: [] }, null, 2), "utf8");
+    writeFileSync(this.file("config.json"), JSON.stringify(settingsToSave(config), null, 2), "utf8");
   }
 
   readHistory(): HistoryEvent[] {

@@ -10,11 +10,13 @@ import { Field } from "@renderer/components/Field";
 import { AdsPowerPage } from "@renderer/pages/AdsPowerPage";
 import { EmailPage } from "@renderer/pages/EmailPage";
 import { FarmPage } from "@renderer/pages/FarmPage";
+import { FarmRunPage } from "@renderer/pages/FarmRunPage";
 import { SmsPage } from "@renderer/pages/SmsPage";
 
 describe("UI contrato", () => {
   afterEach(() => {
     vi.useRealTimers();
+    delete (window as { desktop?: unknown }).desktop;
   });
 
   it("mostra os 5 menus e troca de página", async () => {
@@ -50,23 +52,45 @@ describe("UI contrato", () => {
     expect(screen.getByRole("heading", { name: /Farm de BM/ })).toBeInTheDocument();
   });
 
+  it("mostra ! na sidebar se SMS, e-mail ou AdsPower falhar", async () => {
+    vi.useFakeTimers();
+    window.desktop = {
+      getConfig: async () => DEFAULT_CONFIG,
+      getHistory: async () => [],
+      engineStatus: async () => ({ running: false, mensagem: "Motor ocioso." }),
+      farmState: async () => ({ running: false, batchSize: 1, companies: [], mensagem: "Farm ocioso." }),
+      platform: async () => ({ id: "win", modKey: "Ctrl", version: "0.1.0" }),
+      listLogs: async () => [],
+      checkUpdate: async () => undefined,
+      onLog: () => () => undefined,
+      onPause: () => () => undefined,
+      onFarmState: () => () => undefined,
+      testSms: async () => ({ ok: false, mensagem: "SMS caiu" }),
+      testEmail: async () => ({ ok: true, mensagem: "mail ok" }),
+      listAdsPowerProfiles: async () => [],
+    } as typeof window.desktop;
+    render(<App />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByLabelText(/integração falhou/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Número Virtual/ })).toHaveTextContent("!");
+    expect(screen.getByRole("button", { name: /^Farm de BM/ })).not.toHaveTextContent("!");
+    expect(screen.getByRole("button", { name: /^Histórico$/ })).not.toHaveTextContent("!");
+  });
+
   it("no card da empresa o PDF é seletor e o toggle de leitura vem ligado", () => {
     const config = structuredClone(DEFAULT_CONFIG);
     config.empresas = [emptyEmpresa("e1")];
     render(
       <FarmPage
         config={config}
-        engine={{ running: false, mensagem: "Motor ocioso." }}
         profiles={[
           { userId: "h1yynkm", serial: "2", name: "Perfil 2" },
           { userId: "abc123", serial: "1", name: "Perfil 1" },
         ]}
         onChange={() => undefined}
-        onStart={async () => undefined}
-        onFill={async () => undefined}
-        onDetect={async () => undefined}
-        onStop={async () => undefined}
-        onSaveSnapshot={async () => undefined}
+        onStartFarm={async () => undefined}
         onPickDocument={async () => undefined}
         onRemove={async () => undefined}
       />,
@@ -77,6 +101,186 @@ describe("UI contrato", () => {
     expect(screen.getByLabelText(/Perfil AdsPower/)).toBeInTheDocument();
     expect(screen.getByRole("option", { name: /2 · Perfil 2/ })).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: /Documento original/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Preencher portfolio/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Iniciar farm/ })).toBeInTheDocument();
+    expect(screen.getByLabelText(/Tamanho do lote/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Iniciar farm/ })).toBeEnabled();
+    expect(screen.queryByText(/Obrigatório/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Adicione pelo menos uma empresa/)).not.toBeInTheDocument();
+  });
+
+  it("valida e destaca os campos só ao clicar em Iniciar farm", async () => {
+    const user = userEvent.setup();
+    const onStartFarm = vi.fn(async () => undefined);
+    const config = structuredClone(DEFAULT_CONFIG);
+    config.empresas = [emptyEmpresa("e1")];
+    render(
+      <FarmPage
+        config={config}
+        profiles={[{ userId: "h1yynkm", serial: "2", name: "Perfil 2" }]}
+        onChange={() => undefined}
+        onStartFarm={onStartFarm}
+        onPickDocument={async () => undefined}
+        onRemove={async () => undefined}
+      />,
+    );
+    expect(screen.getByLabelText(/Razão social/)).not.toHaveAttribute("aria-invalid");
+    await user.click(screen.getByRole("button", { name: /Iniciar farm/ }));
+    expect(onStartFarm).not.toHaveBeenCalled();
+    expect(screen.getByLabelText(/Razão social/)).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByLabelText(/CEP/)).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getAllByText(/Obrigatório/).length).toBeGreaterThan(0);
+  });
+
+  it("não formata o texto enquanto o usuário digita", async () => {
+    const user = userEvent.setup();
+    function Harness() {
+      const [config, setConfig] = useState(() => {
+        const next = structuredClone(DEFAULT_CONFIG);
+        next.empresas = [emptyEmpresa("e1")];
+        return next;
+      });
+      return (
+        <FarmPage
+          config={config}
+          profiles={[]}
+          onChange={setConfig}
+          onStartFarm={async () => undefined}
+          onPickDocument={async () => undefined}
+          onRemove={async () => undefined}
+        />
+      );
+    }
+    render(<Harness />);
+    await user.type(screen.getByLabelText(/Razão social/), "vesol energia");
+    expect(screen.getByLabelText(/Razão social/)).toHaveValue("vesol energia");
+    await user.type(screen.getByLabelText(/^CEP/), "89258001");
+    expect(screen.getByLabelText(/^CEP/)).toHaveValue("89258001");
+  });
+
+  it("mostra o log da empresa e o badge de atenção durante o farm", () => {
+    render(
+      <FarmRunPage
+        state={{
+          running: true,
+          batchSize: 1,
+          mensagem: "Farm iniciado · lote 1.",
+          companies: [
+            {
+              id: "e1",
+              razaoSocial: "Vesol Energia Solar Ltda",
+              status: "paused",
+              attention: true,
+              pause: { id: "p1", empresaId: "e1", reason: "captcha", message: "Meta pediu CAPTCHA — clique no card" },
+              logs: [
+                {
+                  id: "l1",
+                  timestamp: "2026-10-27T12:00:00.000Z",
+                  empresaId: "e1",
+                  level: "info",
+                  message: "Abrindo perfil 2…",
+                },
+              ],
+            },
+          ],
+        }}
+        selectedId="e1"
+        onSelect={() => undefined}
+        onStop={async () => undefined}
+        onResume={async () => undefined}
+        onReport={async () => undefined}
+        onDismiss={async () => undefined}
+        onDismissAll={async () => undefined}
+      />,
+    );
+    expect(screen.getByText(/Abrindo perfil 2/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/atenção/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Encerrar farm/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Continuar/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Reportar tela/ })).toBeEnabled();
+  });
+
+  it("mostra check verde e concluir por empresa quando a etapa termina", () => {
+    render(
+      <FarmRunPage
+        state={{
+          running: false,
+          batchSize: 1,
+          mensagem: "Farm concluído nesta fase (portfólio).",
+          companies: [
+            {
+              id: "e1",
+              razaoSocial: "Vesol Energia Solar Ltda",
+              status: "ok",
+              attention: false,
+              logs: [
+                {
+                  id: "l1",
+                  timestamp: "2026-10-27T12:00:00.000Z",
+                  empresaId: "e1",
+                  level: "info",
+                  message: "Etapa portfolio já concluída · pulando · Bmnovaativa",
+                },
+              ],
+            },
+          ],
+        }}
+        selectedId="e1"
+        onSelect={() => undefined}
+        onStop={async () => undefined}
+        onResume={async () => undefined}
+        onReport={async () => undefined}
+        onDismiss={async () => undefined}
+        onDismissAll={async () => undefined}
+      />,
+    );
+    expect(screen.getByLabelText(/concluída/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Concluir Vesol Energia Solar Ltda/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /Concluir farm/ })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: /Encerrar farm/ })).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/Ações de Vesol Energia Solar Ltda/)).toBeInTheDocument();
+  });
+
+  it("mostra as ações só da aba selecionada, acima do log", () => {
+    render(
+      <FarmRunPage
+        state={{
+          running: false,
+          batchSize: 2,
+          mensagem: "Farm concluído nesta fase (portfólio).",
+          companies: [
+            {
+              id: "e1",
+              razaoSocial: "Vesol Energia Solar Ltda",
+              status: "ok",
+              attention: false,
+              logs: [{ id: "l1", timestamp: "2026-10-27T12:00:00.000Z", empresaId: "e1", level: "info", message: "Vesol ok" }],
+            },
+            {
+              id: "e2",
+              razaoSocial: "Outra Empresa Ltda",
+              status: "ok",
+              attention: false,
+              logs: [{ id: "l2", timestamp: "2026-10-27T12:00:00.000Z", empresaId: "e2", level: "info", message: "Outra ok" }],
+            },
+          ],
+        }}
+        selectedId="e2"
+        onSelect={() => undefined}
+        onStop={async () => undefined}
+        onResume={async () => undefined}
+        onReport={async () => undefined}
+        onDismiss={async () => undefined}
+        onDismissAll={async () => undefined}
+      />,
+    );
+    expect(screen.getByLabelText(/Ações de Outra Empresa Ltda/)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Ações de Vesol Energia Solar Ltda/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Concluir Outra Empresa Ltda/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Concluir Vesol Energia Solar Ltda/ })).not.toBeInTheDocument();
+    const actions = screen.getByLabelText(/Ações de Outra Empresa Ltda/);
+    const log = screen.getByText(/Outra ok/).parentElement;
+    expect(actions.compareDocumentPosition(log!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
   it("lista os perfis do AdsPower quando a API local está ok", async () => {
@@ -122,7 +326,7 @@ describe("UI contrato", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(5000);
     });
-    expect(onListProfiles).toHaveBeenCalledTimes(2);
+    expect(onListProfiles).toHaveBeenCalledTimes(1);
   });
 
   it("não finge lista vazia quando o GET de perfis é plano pago", () => {
@@ -160,7 +364,7 @@ describe("UI contrato", () => {
     expect(onListNumbers).toHaveBeenCalledTimes(2);
   });
 
-  it("mostra a tabela de ativações e busca de novo a cada 5s", async () => {
+  it("mostra a tabela de ativações e busca de novo sem empilhar GET", async () => {
     vi.useFakeTimers();
     const onListNumbers = vi.fn(async () => undefined);
     const config = structuredClone(DEFAULT_CONFIG);
@@ -195,7 +399,7 @@ describe("UI contrato", () => {
     expect(screen.getByRole("columnheader", { name: /Código SMS/ })).toBeInTheDocument();
     expect(onListNumbers).toHaveBeenCalledTimes(1);
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(5000);
+      await vi.advanceTimersByTimeAsync(8000);
     });
     expect(onListNumbers).toHaveBeenCalledTimes(2);
   });
@@ -288,6 +492,9 @@ describe("UI contrato", () => {
         password: "p1",
         createdAt: "2026-10-26T23:00:00.000Z",
         active: true,
+        empresaId: "e1",
+        razaoSocial: "Vesol Energia Solar Ltda",
+        adspowerProfile: "2",
         messages: [{ id: "m1", from: "meta@fb.com", subject: "Confirme sua BM", intro: "código a caminho" }],
       },
     ];
@@ -303,6 +510,8 @@ describe("UI contrato", () => {
     expect(screen.queryByRole("button", { name: /Gerar caixa nova/ })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /Caixas/ }));
     expect(screen.getByText("bmteste@mail.tm")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /Empresa \/ perfil AdsPower/ })).toBeInTheDocument();
+    expect(screen.getByText("Vesol Energia Solar Ltda · perfil 2")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Copiar e-mail/ })).toBeInTheDocument();
     expect(screen.getByText("ATIVO")).toBeInTheDocument();
     expect(onListInboxes).toHaveBeenCalledTimes(1);

@@ -11,6 +11,8 @@ interface FieldProps {
   wide?: boolean;
   multiline?: boolean;
   placeholder?: string;
+  invalid?: boolean;
+  error?: string;
 }
 
 export function Field({
@@ -23,9 +25,11 @@ export function Field({
   wide,
   multiline,
   placeholder,
+  invalid,
+  error,
 }: FieldProps) {
   return (
-    <label className={wide ? "field wide" : "field"} htmlFor={id}>
+    <label className={`${wide ? "field wide" : "field"}${invalid ? " invalid" : ""}`} htmlFor={id}>
       <span>
         {label} <small className="muted">{value.length}/{maxLength}</small>
       </span>
@@ -35,6 +39,7 @@ export function Field({
           value={value}
           maxLength={maxLength}
           placeholder={placeholder}
+          aria-invalid={invalid || undefined}
           onChange={(event) => onChange(event.target.value)}
         />
       ) : (
@@ -44,9 +49,11 @@ export function Field({
           value={value}
           maxLength={maxLength}
           placeholder={placeholder}
+          aria-invalid={invalid || undefined}
           onChange={(event) => onChange(event.target.value)}
         />
       )}
+      {error ? <small className="field-error">{error}</small> : null}
     </label>
   );
 }

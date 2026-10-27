@@ -1,4 +1,4 @@
-import { inboxStatusLabel } from "@shared/mail-view";
+import { inboxOwnerLabel, inboxStatusLabel } from "@shared/mail-view";
 import { formatActivationWhen } from "@shared/sms-view";
 import type { AppConfig, ConnectionResult } from "@shared/types";
 import { useEffect, useState } from "react";
@@ -29,17 +29,25 @@ export function EmailPage({ config, live, action, busy, onCreate, onListInboxes,
 
   useEffect(() => {
     if (tab !== "messages" || !selected) return;
-    void onOpenInbox(selected);
-    const timer = window.setInterval(() => {
-      void onOpenInbox(selected);
-    }, 5000);
+    let running = false;
+    const tick = async () => {
+      if (running) return;
+      running = true;
+      try {
+        await onOpenInbox(selected);
+      } finally {
+        running = false;
+      }
+    };
+    void tick();
+    const timer = window.setInterval(() => void tick(), 8000);
     return () => window.clearInterval(timer);
   }, [tab, selected, onOpenInbox]);
 
   return (
     <section className="page">
       <h1>E-mail temporário</h1>
-      <p className="muted">mail.tm só entra na validação da BM. A aba principal só confere se o serviço está no ar; gerar e ler fica nas subabas.</p>
+      <p className="muted">mail.tm entra na criação do portfólio. A aba principal só confere se o serviço está no ar; gerar e ler fica nas subabas.</p>
       <div className="form-panel">
         <div className={`live-badge ${connected ? "ok" : live ? "err" : ""}`}>{live ? live.mensagem : "Checando mail.tm…"}</div>
       </div>
@@ -75,6 +83,7 @@ export function EmailPage({ config, live, action, busy, onCreate, onListInboxes,
                 <thead>
                   <tr>
                     <th>Endereço</th>
+                    <th>Empresa / perfil AdsPower</th>
                     <th>Status</th>
                     <th>Msgs</th>
                     <th>Criada</th>
@@ -90,6 +99,7 @@ export function EmailPage({ config, live, action, busy, onCreate, onListInboxes,
                           <CopyButton label="Copiar e-mail" value={item.address} />
                         </div>
                       </td>
+                      <td>{inboxOwnerLabel(item)}</td>
                       <td>
                         <span className={`badge ${item.active ? "ok" : ""}`}>{inboxStatusLabel(item.active)}</span>
                       </td>

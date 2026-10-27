@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { EmpresaCard } from "@shared/empresa";
-import type { AppConfig, HistoryEvent, MenuId } from "@shared/types";
+import type { AppConfig, FarmEvent, FarmRunState, HistoryEvent, MenuId } from "@shared/types";
 
 const api = {
   getConfig: () => ipcRenderer.invoke("config:get") as Promise<AppConfig>,
@@ -31,12 +31,28 @@ const api = {
   applyUpdate: () => ipcRenderer.invoke("update:apply"),
   pickEmpresaDocument: (autoFill: boolean) => ipcRenderer.invoke("empresa:pick-document", autoFill) as Promise<{ path: string; fields: Partial<EmpresaCard> } | undefined>,
   startSession: (empresaId: string, card?: EmpresaCard) => ipcRenderer.invoke("engine:start", empresaId, card),
+  startFarm: (cards: EmpresaCard[], batchSize: number) => ipcRenderer.invoke("farm:start", cards, batchSize) as Promise<FarmRunState>,
+  stopFarm: () => ipcRenderer.invoke("farm:stop") as Promise<FarmRunState>,
+  reportFarmScreen: (empresaId: string) => ipcRenderer.invoke("farm:report", empresaId) as Promise<FarmRunState>,
+  dismissFarmCompany: (empresaId: string) => ipcRenderer.invoke("farm:dismiss", empresaId) as Promise<FarmRunState>,
+  dismissFarm: () => ipcRenderer.invoke("farm:dismiss-all") as Promise<FarmRunState>,
+  farmState: () => ipcRenderer.invoke("farm:state") as Promise<FarmRunState>,
   detectScreen: () => ipcRenderer.invoke("engine:detect"),
   fillStep: (empresaId: string, step: string, card?: EmpresaCard) => ipcRenderer.invoke("engine:fill", empresaId, step, card),
   resumeHuman: (pauseId: string) => ipcRenderer.invoke("engine:resume", pauseId),
   stopSession: () => ipcRenderer.invoke("engine:stop"),
   engineStatus: () => ipcRenderer.invoke("engine:status"),
   saveSnapshot: (classifiedAs: string) => ipcRenderer.invoke("map:save-snapshot", classifiedAs),
+  onFarmEvent: (handler: (event: FarmEvent) => void) => {
+    const listener = (_event: unknown, event: FarmEvent) => handler(event);
+    ipcRenderer.on("farm:event", listener);
+    return () => ipcRenderer.removeListener("farm:event", listener);
+  },
+  onFarmState: (handler: (state: FarmRunState) => void) => {
+    const listener = (_event: unknown, state: FarmRunState) => handler(state);
+    ipcRenderer.on("farm:state", listener);
+    return () => ipcRenderer.removeListener("farm:state", listener);
+  },
   platform: () => ipcRenderer.invoke("app:platform") as Promise<{ id: string; modKey: string; version: string }>,
   onPause: (handler: (pause: unknown) => void) => {
     const listener = (_event: unknown, pause: unknown) => handler(pause);

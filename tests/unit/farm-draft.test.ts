@@ -13,4 +13,11 @@ describe("rascunho do farm", () => {
     expect(saved.sms.apiKey).toBe("k");
     expect(config.empresas).toHaveLength(1);
   });
+
+  it("grava empresas depois que o farm começa", () => {
+    const config = structuredClone(DEFAULT_CONFIG);
+    config.empresas = [emptyEmpresa("e1")];
+    config.farm.started = true;
+    expect(settingsToSave(config).empresas).toHaveLength(1);
+  });
 });

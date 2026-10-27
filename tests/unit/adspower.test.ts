@@ -1,4 +1,4 @@
-import { ADSPOWER_PROBE_URL, listAdsPowerProfiles, profileParams, resetAdsPowerProfileCache } from "../../src/main/adspower";
+import { ADSPOWER_PROBE_URL, isAdsPowerRateLimit, listAdsPowerProfiles, profileParams, resetAdsPowerProfileCache } from "../../src/main/adspower";
 import { formatAdsPowerOpen, formatAdsPowerProxy, formatAdsPowerStatus, mapAdsPowerActive, mapAdsPowerProfile } from "../../src/shared/adspower-view";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -76,6 +76,33 @@ describe("AdsPower perfil", () => {
     const list = await listAdsPowerProfiles({ baseUrl: "http://127.0.0.1:50325", apiKey: "k", testProfile: "" });
     expect(list.map((item) => item.serial)).toEqual(["1", "2"]);
     expect(list[0]?.status).toBe("fechado");
+  });
+
+  it("não some com a lista quando a API pede calma", async () => {
+    resetAdsPowerProfileCache();
+    let hits = 0;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      hits += 1;
+      const url = String(input);
+      if (url.includes("/api/v1/user/list") && hits === 1) {
+        return jsonResponse({
+          code: 0,
+          msg: "success",
+          data: { list: [{ user_id: "h1yynkm", serial_number: "2", name: "Loja" }] },
+        });
+      }
+      return jsonResponse({ code: -1, msg: "Too many request per second, please check" });
+    });
+    const first = await listAdsPowerProfiles({ baseUrl: "http://127.0.0.1:50325", apiKey: "k", testProfile: "" });
+    const second = await Promise.all([
+      listAdsPowerProfiles({ baseUrl: "http://127.0.0.1:50325", apiKey: "k", testProfile: "" }),
+      listAdsPowerProfiles({ baseUrl: "http://127.0.0.1:50325", apiKey: "k", testProfile: "" }),
+    ]);
+    expect(first[0]?.userId).toBe("h1yynkm");
+    expect(second[0][0]?.userId).toBe("h1yynkm");
+    expect(second[1][0]?.userId).toBe("h1yynkm");
+    expect(hits).toBe(1);
+    expect(isAdsPowerRateLimit("Too many request per second, please check")).toBe(true);
   });
 });
 

@@ -19,14 +19,14 @@ export interface EmpresaCard {
   ler_pdf_automatico: boolean;
 }
 
-export function emptyEmpresa(id = crypto.randomUUID()): EmpresaCard {
+export function emptyEmpresa(id: string = crypto.randomUUID()): EmpresaCard {
   return {
     id,
     razao_social: "",
     cnpj: "",
     responsavel: "",
     email_comercial: "",
-    usar_email_temporario: false,
+    usar_email_temporario: true,
     endereco: "",
     complemento: "",
     cidade: "",
@@ -60,8 +60,19 @@ export function validCnpj(value: string): boolean {
   return base === n;
 }
 
-export function validateEmpresa(card: EmpresaCard): string[] {
-  const errors: string[] = [];
+function siteReady(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && Boolean(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
+export type EmpresaFieldErrors = Partial<Record<keyof EmpresaCard, string>>;
+
+export function empresaFieldErrors(card: EmpresaCard): EmpresaFieldErrors {
+  const errors: EmpresaFieldErrors = {};
   const required: Array<keyof EmpresaCard> = [
     "razao_social",
     "cnpj",
@@ -73,36 +84,84 @@ export function validateEmpresa(card: EmpresaCard): string[] {
     "telefone",
     "site",
     "adspower_profile",
+    "documento_original",
   ];
   for (const key of required) {
-    if (!String(card[key] ?? "").trim()) errors.push(`Campo obrigatório: ${key}`);
+    if (!String(card[key] ?? "").trim()) errors[key] = "Obrigatório.";
   }
-  if (card.email_comercial && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(card.email_comercial)) {
-    errors.push("E-mail comercial inválido.");
+  if (card.email_comercial.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(card.email_comercial)) {
+    errors.email_comercial = "E-mail comercial inválido.";
   }
-  if (!card.usar_email_temporario && !card.email_comercial.trim()) {
-    errors.push("Informe o e-mail comercial ou marque o temporário só na validação.");
+  if (card.cnpj.trim() && !validCnpj(card.cnpj)) errors.cnpj = "CNPJ inválido.";
+  if (card.estado.trim() && !/^[A-Za-z]{2}$/.test(card.estado)) errors.estado = "UF deve ter 2 letras.";
+  if (card.cep.trim() && digits(card.cep).length !== 8) errors.cep = "CEP deve ter 8 dígitos.";
+  if (card.telefone.trim() && ![10, 11].includes(digits(card.telefone).length)) {
+    errors.telefone = "Telefone deve ter DDD e número, sem +55.";
   }
-  if (card.cnpj && !validCnpj(card.cnpj)) errors.push("CNPJ inválido.");
-  if (card.estado && !/^[A-Za-z]{2}$/.test(card.estado)) errors.push("UF deve ter 2 letras.");
-  if (card.cep && digits(card.cep).length !== 8) errors.push("CEP deve ter 8 dígitos.");
-  if (card.telefone && ![10, 11].includes(digits(card.telefone).length)) {
-    errors.push("Telefone deve ter DDD e número, sem +55.");
-  }
-  try {
-    const url = new URL(card.site);
-    if (url.protocol !== "https:") errors.push("Site deve ser HTTPS.");
-  } catch {
-    if (card.site.trim()) errors.push("Site inválido.");
+  if (card.site.trim() && !siteReady(card.site)) errors.site = "Site deve ser HTTPS com domínio, não só https://.";
+  if (!card.autorizado_pela_empresa) errors.autorizado_pela_empresa = "Marque que está autorizado pela empresa.";
+  if (!card.documento_sem_alteracao_de_conteudo) {
+    errors.documento_sem_alteracao_de_conteudo = "Marque que o documento é original sem alteração.";
   }
   return errors;
 }
 
+export function validateEmpresa(card: EmpresaCard): string[] {
+  return Object.values(empresaFieldErrors(card));
+}
+
+export function farmFieldErrors(cards: EmpresaCard[], knownProfiles: string[] = []): Record<string, EmpresaFieldErrors> {
+  const byId: Record<string, EmpresaFieldErrors> = {};
+  for (const card of cards) byId[card.id] = empresaFieldErrors(card);
+  const profiles = new Map<string, string[]>();
+  const cnpjs = new Map<string, string[]>();
+  const known = new Set(knownProfiles.filter(Boolean));
+  for (const card of cards) {
+    const profile = card.adspower_profile.trim();
+    if (profile) {
+      const list = profiles.get(profile) ?? [];
+      list.push(card.id);
+      profiles.set(profile, list);
+      if (known.size && !known.has(profile)) {
+        byId[card.id].adspower_profile = "Perfil AdsPower não está na listagem local.";
+      }
+    }
+    const cnpj = digits(card.cnpj);
+    if (cnpj) {
+      const list = cnpjs.get(cnpj) ?? [];
+      list.push(card.id);
+      cnpjs.set(cnpj, list);
+    }
+  }
+  for (const [profile, ids] of profiles) {
+    if (ids.length < 2) continue;
+    for (const id of ids) byId[id].adspower_profile = `Perfil AdsPower ${profile} está em mais de um card.`;
+  }
+  for (const ids of cnpjs.values()) {
+    if (ids.length < 2) continue;
+    for (const id of ids) byId[id].cnpj = "CNPJ está em mais de um card.";
+  }
+  return byId;
+}
+
+export function validateFarmStart(cards: EmpresaCard[], knownProfiles: string[] = []): string[] {
+  if (!cards.length) return ["Adicione pelo menos uma empresa."];
+  const errors: string[] = [];
+  const byId = farmFieldErrors(cards, knownProfiles);
+  for (const card of cards) {
+    for (const error of Object.values(byId[card.id] ?? {})) {
+      errors.push(`${card.razao_social || card.id}: ${error}`);
+    }
+  }
+  return [...new Set(errors)];
+}
+
 export const FIELDS_FOR = {
   portfolio: [
-    ["Nome da sua conta e empresa", "razao_social"],
-    ["Seu nome", "responsavel"],
-    ["Seu email comercial", "email_comercial"],
+    ["Nome do portfólio empresarial", "razao_social"],
+    ["Nome", "responsavel"],
+    ["Sobrenome", "responsavel"],
+    ["Email comercial", "email_comercial"],
   ],
   empresa: [
     ["Razão social da empresa", "razao_social"],

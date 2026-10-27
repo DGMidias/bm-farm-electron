@@ -19,17 +19,13 @@ export function AdsPowerPage({ config, onChange, live, profiles, listError, onLi
   useEffect(() => {
     if (!connected) return;
     void onListProfiles();
-    const timer = window.setInterval(() => {
-      void onListProfiles();
-    }, 5000);
-    return () => window.clearInterval(timer);
   }, [connected, onListProfiles]);
 
   return (
     <section className="page">
       <h1>AdsPower</h1>
       <p className="muted">
-        A badge testa a API local a cada 5s. Com a conexão ok, a tabela lista os perfis do AdsPower. O Facebook nunca carrega nesta janela.
+        A badge e a tabela acompanham a API local sem martelar o AdsPower. O Facebook nunca carrega nesta janela.
       </p>
       <div className="form-panel">
         <div className={`live-badge ${connected ? "ok" : live ? "err" : ""}`}>{live ? live.mensagem : "Checando AdsPower…"}</div>
@@ -58,7 +54,7 @@ export function AdsPowerPage({ config, onChange, live, profiles, listError, onLi
           <strong>Perfis no AdsPower</strong>
           <p className="muted">
             {profiles.length
-              ? `${profiles.length} perfil${profiles.length === 1 ? "" : "is"} · atualiza a cada 5s`
+              ? `${profiles.length} perfil${profiles.length === 1 ? "" : "is"}`
               : listError || "A API local está ok. Nenhum perfil visível neste GET."}
           </p>
           {profiles.length === 0 && !listError ? (

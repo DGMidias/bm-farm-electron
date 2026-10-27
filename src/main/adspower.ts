@@ -5,13 +5,42 @@ import { log, logError } from "./log";
 
 const SERIAL_SCAN_LIMIT = 20;
 const SERIAL_MISS_LIMIT = 3;
+const REQUEST_GAP_MS = process.env.VITEST ? 0 : 1100;
+const PROFILE_CACHE_MS = process.env.VITEST ? 60_000 : 8000;
 
 let paidListBlocked = false;
 let knownSerials: string[] = [];
+let requestGate = Promise.resolve();
+let lastRequestAt = 0;
+let inflightList: Promise<AdsPowerProfile[]> | null = null;
+let cachedProfiles: { at: number; list: AdsPowerProfile[] } | null = null;
 
 export function resetAdsPowerProfileCache(): void {
   paidListBlocked = false;
   knownSerials = [];
+  inflightList = null;
+  cachedProfiles = null;
+  lastRequestAt = 0;
+  requestGate = Promise.resolve();
+}
+
+export function isAdsPowerRateLimit(message: string): boolean {
+  return /too many request/i.test(message);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function rememberProfiles(list: AdsPowerProfile[]): AdsPowerProfile[] {
+  cachedProfiles = { at: Date.now(), list };
+  return list;
+}
+
+function cachedIfFresh(): AdsPowerProfile[] | undefined {
+  if (!cachedProfiles) return undefined;
+  if (Date.now() - cachedProfiles.at > PROFILE_CACHE_MS) return undefined;
+  return cachedProfiles.list;
 }
 
 export const ADSPOWER_PROBE_URL = "https://github.com/DGMidias/bm-farm-electron";
@@ -32,24 +61,38 @@ export async function adspowerRequest(
   for (const [key, value] of Object.entries(params)) {
     url.searchParams.set(key, String(value));
   }
-  const headers: Record<string, string> = {};
-  if (config.apiKey) headers.Authorization = `Bearer ${config.apiKey}`;
-  const response = await fetch(url, { headers });
-  const payload = (await response.json()) as { code?: number; msg?: string; data?: unknown };
-  if (payload.code !== 0) {
-    const msg = payload.msg || "erro AdsPower";
-    if (/api-key/i.test(msg) && !config.apiKey) {
-      throw new Error("AdsPower exige API key.");
+  const run = requestGate.then(async () => {
+    const wait = REQUEST_GAP_MS - (Date.now() - lastRequestAt);
+    if (wait > 0) await sleep(wait);
+    lastRequestAt = Date.now();
+    const headers: Record<string, string> = {};
+    if (config.apiKey) headers.Authorization = `Bearer ${config.apiKey}`;
+    const response = await fetch(url, { headers });
+    const payload = (await response.json()) as { code?: number; msg?: string; data?: unknown };
+    if (payload.code !== 0) {
+      const msg = payload.msg || "erro AdsPower";
+      if (/api-key/i.test(msg) && !config.apiKey) {
+        throw new Error("AdsPower exige API key.");
+      }
+      if (/disorderedid/i.test(msg)) {
+        throw new Error("ID do perfil inválido. Use serial_number (2) ou user_id.");
+      }
+      if (isAdsPowerRateLimit(msg)) {
+        log("warn", "adspower", `${path} → ${msg}`);
+        throw new Error(msg);
+      }
+      if (!isPaidAdsPowerListError(msg) && !(path.includes("/browser/active") && /failed/i.test(msg))) {
+        log("error", "adspower", `${path} → ${msg}`);
+      }
+      throw new Error(msg);
     }
-    if (/disorderedid/i.test(msg)) {
-      throw new Error("ID do perfil inválido. Use serial_number (2) ou user_id.");
-    }
-    if (!isPaidAdsPowerListError(msg) && !(path.includes("/browser/active") && /failed/i.test(msg))) {
-      log("error", "adspower", `${path} → ${msg}`);
-    }
-    throw new Error(msg);
-  }
-  return payload.data ?? {};
+    return payload.data ?? {};
+  });
+  requestGate = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
 }
 
 export async function testAdsPower(config: AdsPowerConfig): Promise<ConnectionResult> {
@@ -62,7 +105,7 @@ export async function testAdsPower(config: AdsPowerConfig): Promise<ConnectionRe
   }
 }
 
-export async function listAdsPowerProfiles(config: AdsPowerConfig): Promise<AdsPowerProfile[]> {
+async function fetchAdsPowerProfiles(config: AdsPowerConfig): Promise<AdsPowerProfile[]> {
   if (!paidListBlocked) {
     try {
       const data = (await adspowerRequest(config, "/api/v1/user/list", { page: 1, page_size: 100 })) as {
@@ -70,15 +113,36 @@ export async function listAdsPowerProfiles(config: AdsPowerConfig): Promise<AdsP
       };
       const list = (data.list ?? []).map((item) => mapAdsPowerProfile(item)).filter((item): item is AdsPowerProfile => Boolean(item));
       knownSerials = list.map((item) => item.serial).filter((item): item is string => Boolean(item));
-      return list;
+      return rememberProfiles(list);
     } catch (error) {
       const message = error instanceof Error ? error.message : "";
-      if (!isPaidAdsPowerListError(message)) throw error;
-      paidListBlocked = true;
-      log("warn", "adspower", "GET /user/list é plano pago. Descobrindo perfis pelo serial local.");
+      if (isPaidAdsPowerListError(message)) {
+        paidListBlocked = true;
+        log("warn", "adspower", "GET /user/list é plano pago. Descobrindo perfis pelo serial local.");
+      } else if (cachedProfiles?.list) {
+        if (isAdsPowerRateLimit(message)) log("warn", "adspower", "API pediu calma; usando a última lista.");
+        return cachedProfiles.list;
+      } else {
+        throw error;
+      }
     }
   }
-  return listProfilesBySerial(config);
+  try {
+    return rememberProfiles(await listProfilesBySerial(config));
+  } catch (error) {
+    if (cachedProfiles?.list) return cachedProfiles.list;
+    throw error;
+  }
+}
+
+export async function listAdsPowerProfiles(config: AdsPowerConfig): Promise<AdsPowerProfile[]> {
+  const fresh = cachedIfFresh();
+  if (fresh) return fresh;
+  if (inflightList) return inflightList;
+  inflightList = fetchAdsPowerProfiles(config).finally(() => {
+    inflightList = null;
+  });
+  return inflightList;
 }
 
 async function listProfilesBySerial(config: AdsPowerConfig): Promise<AdsPowerProfile[]> {
@@ -112,8 +176,17 @@ async function readSerialProfile(config: AdsPowerConfig, serial: string): Promis
     return mapAdsPowerActive(serial, data);
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
-    if (isPaidAdsPowerListError(message)) throw error;
+    if (isPaidAdsPowerListError(message) || isAdsPowerRateLimit(message)) throw error;
     return undefined;
+  }
+}
+
+export async function isProfileActive(config: AdsPowerConfig, profileId: string): Promise<boolean> {
+  try {
+    const data = (await adspowerRequest(config, "/api/v1/browser/active", profileParams(profileId))) as Record<string, unknown>;
+    return String(data.status ?? "").toLowerCase() === "active";
+  } catch {
+    return false;
   }
 }
 

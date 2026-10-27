@@ -23,6 +23,12 @@ export function inboxStatusLabel(active: boolean): string {
   return active ? "ATIVO" : "SEM ACESSO";
 }
 
+export function inboxOwnerLabel(inbox: Pick<MailInbox, "razaoSocial" | "adspowerProfile">): string {
+  const empresa = inbox.razaoSocial?.trim() || "sem empresa";
+  const profile = inbox.adspowerProfile?.trim();
+  return profile ? `${empresa} · perfil ${profile}` : empresa;
+}
+
 function unixToIso(value: unknown): string | undefined {
   if (typeof value === "number" && Number.isFinite(value)) {
     const ms = value < 1e12 ? value * 1000 : value;

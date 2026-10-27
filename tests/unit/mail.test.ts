@@ -1,4 +1,5 @@
 import { extractValidationCode, inboxStatusLabel, mapMailMessage, mergeSeenMessages, rememberInbox } from "../../src/main/mail-tm";
+import { inboxOwnerLabel } from "@shared/mail-view";
 import { smsReady } from "../../src/main/sms";
 import { describe, expect, it } from "vitest";
 
@@ -23,6 +24,14 @@ describe("adapters", () => {
     expect(merged.map((item) => item.id).sort()).toEqual(["m1", "m2"]);
     expect(inboxStatusLabel(true)).toBe("ATIVO");
     expect(inboxStatusLabel(false)).toBe("SEM ACESSO");
+    const owned = rememberInbox([], {
+      ...first,
+      razaoSocial: "Vesol Energia Solar Ltda",
+      adspowerProfile: "2",
+      empresaId: "e1",
+    });
+    expect(owned[0]?.razaoSocial).toBe("Vesol Energia Solar Ltda");
+    expect(inboxOwnerLabel(owned[0]!)).toBe("Vesol Energia Solar Ltda · perfil 2");
   });
 
   it("extrai código da validação", () => {

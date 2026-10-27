@@ -2,6 +2,127 @@
 
 Formato: data · o que mudou · por que · o que não desfazer.
 
+## 2026-10-27 — Farm: suite vazia com business_id vai para pessoas do portfólio
+
+- **O quê:** depois de criar, `latest/home?business_id=` com "Não é possível acessar o Meta Business Suite" deixa de ser tela desconhecida. O farm lê o `business_id` e abre `/latest/settings/business_users/?nav_ref=bm_settings_redirect_migration&bm_redirect_migration=true&business_id=`. Aí abre o seletor para conferir a razão. O home que já funciona (`Etapas para começar`) continua `portfolio.existing`. As settings seguintes montam a URL com esse id.
+- **Por quê:** BM recém-criado ainda não tem Página/Instagram; o seletor na home vazia não abre e o worker pedia Continuar.
+- **Não desfazer:** locators genéricos. Sem pausa humana nessa tela. Sem clicar pelo nome da empresa.
+
+## 2026-10-27 — Farm: etapa 1 sempre gera caixa mail.tm nova
+
+- **O quê:** ao preencher o portfólio (seletor de 4 campos ou modal de 3 + Enviar), o farm gera uma caixa mail.tm nova e usa esse endereço. Ignora o e-mail comercial do PDF/card. A caixa fica na aba Email com razão social e perfil AdsPower. Uma caixa por execução, reusada se o modal repetir.
+- **Por quê:** a verificação da Meta chega nesse e-mail. O card já vinha com o e-mail do CNPJ e o worker pulava a geração; a listagem ficava só com caixas avulsas de ontem, sem empresa/perfil.
+- **Não desfazer:** locators genéricos. Sem e-mail real da empresa no formulário da etapa 1.
+
+## 2026-10-27 — Farm: modal de 3 campos manda no chooser
+
+- **O quê:** se o diálogo **Crie seu portfólio empresarial** já está aberto (Nome da sua conta e empresa / Seu nome / Seu email comercial / **Enviar**), o farm preenche e envia. Não clica **Continuar com o Facebook** atrás do overlay. `Seu nome` pré-preenchido fica; só completa o que estiver vazio. O snapshot de 80 linhas do `loginpage` deixa de decidir isso — o locator do modal decide.
+- **Por quê:** no perfil 4 o modal já estava na tela; o recorte do body só via o chooser e o worker clicava em loop.
+- **Não desfazer:** locators genéricos (rótulo/papel). Sem nome de perfil ou empresa no clique.
+
+## 2026-10-27 — Farm: segundo fluxo de criar portfólio (3 campos + Enviar)
+
+- **O quê:** a landing do Gerenciador pode abrir o modal antigo (Nome da sua conta e empresa / Seu nome / Seu email comercial / **Enviar**). O `loginpage` com esse modal ou com **Continuar com o Facebook** deixa de ser tratado como “perfil sem login”. Só `login.php` + senha pausa.
+- **Por quê:** o perfil 4 já estava logado; o chooser e o modal de 3 campos foram classificados como logout.
+- **Não desfazer:** o fluxo do seletor (4 campos + Criar + Avançar/Confirmar) continua. Locators genéricos.
+
+## 2026-10-27 — Farm: espera o CTA da landing hidratar
+
+- **O quê:** na landing do Gerenciador o farm espera até 8s por **Criar portfólio empresarial** ou **Começar**. Se o clique no link (abaixo do fold) falhar, tenta o outro CTA em vez de chamar tela desconhecida.
+- **Por quê:** o perfil 4 já tinha a landing normal; o worker olhou cedo demais e o link ainda não estava clicável.
+- **Não desfazer:** locators genéricos. Sem nome de empresa.
+
+## 2026-10-27 — Farm: perfil sem login pausa em qualquer etapa
+
+- **O quê:** `business/loginpage`, `facebook.com/login` e `login_options` viram pausa humana com log `Perfil N não está logado na Meta`. Não tenta seletor nem formulário.
+- **Por quê:** o perfil 3 caiu no chooser de login da Meta e o farm pediu para abrir o seletor.
+- **Não desfazer:** login só no Chromium do AdsPower. Sem bypass. Serve para qualquer etapa.
+
+## 2026-10-27 — Farm: Avançar, Avançar, Confirmar depois de criar
+
+- **O quê:** o assistente pós-criação deixa de ser pulado. Clica **Avançar** em adicionar ativos, **Avançar** em adicionar pessoas e **Confirmar** no resumo. Aí a etapa 1 fecha (ainda confere a razão no seletor).
+- **Por quê:** Pular abortava o fluxo; a Meta só conclui o portfólio depois do Confirmar.
+- **Não desfazer:** locators genéricos (Avançar/Confirmar). Sem nome de empresa no clique.
+
+## 2026-10-27 — Farm: conferência do seletor ignora “N ativos” e o erro de nome repetido
+
+- **O quê:** a lista do seletor compara a razão mesmo quando o item vem com “0 ativos de negócios”. O recorte de 80 linhas do snapshot deixa de ser a fonte da lista (lê o body inteiro). Se a Meta disser que o nome já existe, a etapa 1 é `ok`. Depois de enviar o modal, o farm não preenche de novo.
+- **Por quê:** Pba Contabilidade Ltda já estava na lista; a comparação exata falhou e o modal de erro fez o worker criar de novo.
+- **Não desfazer:** só a razão do card entra na comparação. Locators continuam genéricos.
+
+## 2026-10-27 — Farm: Pular o modal de adicionar Página/Instagram
+
+- **O quê:** depois de **Criar**, se a Meta perguntar o que adicionar ao portfólio, o farm clica **Pular**. Clique no seletor que o overlay bloquear deixa de virar `erro` (tenta force; se falhar, pausa). Nome do Facebook ignora chrome tipo “Conheça o Meta Business Suite”.
+- **Por quê:** o overlay do modal cobria o `combobox` e o timeout encerrava a empresa com o portfólio já criado.
+- **Não desfazer:** locators genéricos (Pular/Skip). Não clicar Avançar nesse modal.
+
+## 2026-10-27 — Farm: seletor genérico, sem nome de perfil
+
+- **O quê:** o chip do canto superior esquerdo abre pelo papel `combobox`, não pelo nome do ativo. O harness recusa locator com nome de página/BM/empresa. Comparar razão social continua só para saber se o portfólio já está na lista.
+- **Por quê:** cada perfil AdsPower mostra um ativo diferente; clicar em "Bmnovaativa" (ou qualquer razão) quebra o lote.
+- **Não desfazer:** locators genéricos. Sem busca por nome de página para clicar.
+
+## 2026-10-27 — Farm: etapa 1 pelo seletor + e-mail associado + status global
+
+- **O quê:** a etapa 1 só pula se a razão social estiver em **Portfólios empresariais**. Criação: seletor superior esquerdo → modal de 4 campos (razão, nome/sobrenome do Facebook logado, mail.tm gerado na hora). Confirma reabrindo a lista. A listagem de e-mail mostra empresa/perfil AdsPower. SMS, mail.tm e AdsPower sondam no app inteiro; `!` na sidebar se a integração falhar.
+- **Por quê:** `latest/home` / Bmnovaativa é um ativo dentro de outro portfólio, não o da empresa. O e-mail temporário precisa existir já na criação e aparecer associado ao card.
+- **Não desfazer:** CAPTCHA/OTP continuam pausa humana. AdsPower permanece aberto. Farm/Histórico não usam o `!` de integração. AdsPower segue no teto de 1 req/s.
+
+## 2026-10-27 — Farm: ações da aba ficam acima do log
+
+- **O quê:** Reportar tela, Continuar e Concluir [empresa] saem do topo e ficam **acima do log**, só da aba selecionada. Encerrar / Concluir farm continuam no topo.
+- **Por quê:** misturar ação global com a da empresa escondia de qual perfil era o botão.
+- **Não desfazer:** check verde e revisão manual continuam.
+
+## 2026-10-27 — Farm: revisão manual com check verde
+
+- **O quê:** ao terminar uma empresa a tela de log **não some**. A aba ganha check verde. **Concluir [empresa]** fecha só aquela subaba; **Concluir farm** aparece quando todas terminaram. Encerrar farm só enquanto ainda roda ou pede ação.
+- **Por quê:** pular o portfólio já existente soltava a UI e sumia o log antes de dar para revisar.
+- **Não desfazer:** AdsPower continua aberto. Nada fecha sozinho após o ok.
+
+## 2026-10-27 — Farm: etapa já concluída é pulada
+
+- **O quê:** regra no harness (`SKIP_COMPLETED_ETAPA`): etapa pronta no perfil vira log `já concluída · pulando` e sai `ok`. Na etapa 1, `latest/home` / `portfolio.existing` (Bmnovaativa) não pausa nem erra — pula.
+- **Por quê:** no desenvolvimento o perfil 2 já tinha BM; tratar isso como tela desconhecida ou erro travava o lote.
+- **Não desfazer:** não recria portfólio por cima. CAPTCHA/OTP continuam pausa humana. AdsPower permanece aberto.
+
+## 2026-10-27 — Farm: home de BM existente não é tela desconhecida
+
+- **O quê:** `business.facebook.com/latest/home?nav_ref=bm_home_redirect` vira `portfolio.existing`. O log diz o nome (Bmnovaativa) e o `business_id`. Continuar na mesma tela encerra a etapa sem fechar o AdsPower. Reportar tela só solta o CDP uma vez.
+- **Por quê:** o perfil 2 já tem um BM; o clique em **Criar portfólio empresarial** redireciona para o home (`asset_id=1404934486035164`). O farm chamava isso de desconhecido e logava "CDP solto" duas vezes (perfil 2 e perfil ?).
+- **Não desfazer:** o farm não cria outro portfólio por cima do que já está aberto. CAPTCHA/OTP continuam pausa humana.
+
+## 2026-10-27 — Farm: AdsPower fica aberto e o log diz o nome
+
+- **O quê:** ao terminar (ok, erro ou Encerrar farm) o worker só solta o CDP. Não fecha aba, não dá `browser.close` nem `browser/stop`. O log de execução traz razão, responsável, e-mail e `business_id`. Landing que cai num BM já aberto (`latest/home?business_id=`) não conta como criação — pausa para conferir.
+- **Por quê:** o clique em **Criar portfólio empresarial** foi para o BM `Bmnovaativa` (`1393146169269525`); o farm gritou "Portfólio criado" e derrubou o perfil antes de dar para olhar.
+- **Não desfazer:** CAPTCHA/OTP continuam pausa humana. Facebook só no Chromium do AdsPower. Quem fecha o perfil é o operador.
+
+## 2026-10-27 — Farm: landing do onboarding e Reportar tela
+
+- **O quê:** o worker reconhece a landing do Gerenciador, clica **Criar portfólio empresarial** (link) ou **Começar**, espera o modal e só então preenche os 3 campos. Captura grava `meta.json` + `screen.png` + `dom.html`. Em erro/timeout ou no botão **Reportar tela** a captura sempre sai, e aquela empresa encerra com log da pasta.
+- **Por quê:** a URL `adsmanager/onboarding` era classificada como formulário; o CTA da landing não era clicado e o farm ficava esperando um modal que não abriu.
+- **Não desfazer:** CAPTCHA/OTP continuam pausa humana. **Encerrar farm** ainda mata o lote inteiro; **Reportar tela** só a empresa da aba. Facebook só no Chromium do AdsPower.
+
+## 2026-10-27 — AdsPower/SMS/e-mail: live sem estourar a API
+
+- **O quê:** o AdsPower deixa de listar o tempo todo no app. Farm e AdsPower compartilham um poll; a API local vai no máximo a 1 request/s; lista em cache se vier "Too many request". SMS e mail.tm não empilham GET se o anterior ainda não voltou.
+- **Por quê:** `/user/list` + `/browser/active` a cada 5s, duas vezes, tomava `Too many request per second`.
+- **Não desfazer:** a tabela e o select de perfil continuam com a última lista boa; o relógio do SMS segue a 1s só na UI.
+
+## 2026-10-27 — Farm: validação só no Iniciar farm, título só no PDF
+
+- **O quê:** o card não grita erro enquanto você digita. **Iniciar farm** valida na hora, marca os inputs errados e mostra o motivo. Razão/nome/endereço em título e e-mail minúsculo só entram quando o comprovante CNPJ preenche o card.
+- **Por quê:** formatar a cada tecla travava CEP e o resto; o aviso vermelho no card vazio atrapalhava o preenchimento.
+- **Não desfazer:** a validação dura no start continua (HTTPS, CNPJ, perfil único). Digitação livre no input.
+
+## 2026-10-27 — Farm: Iniciar farm cria o portfólio em lote
+
+- **O quê:** some o Preencher por etapa. Um **Iniciar farm** + tamanho do lote sobe N perfis AdsPower, abre **aba nova**, captura a tela, preenche razão/responsável/e-mail e tenta Criar. A UI trava com subaba, log e ! se precisar de você. CAPTCHA tenta o checkbox uma vez e pausa. Empresas gravam quando o farm começa.
+- **Por quê:** a fase 1 é só o portfólio empresarial; as outras etapas ficam na colinha (`docs/farm-etapas.md`) sem botão.
+- **Não desfazer:** Facebook continua só no Chromium do AdsPower. Não fechamos aba alheia nem damos `browser/stop` em perfil que o operador já tinha aberto. Sem solver de CAPTCHA/OTP.
+
+
 ## 2026-10-27 — Farm: seletor de PDF lembra a última pasta
 
 - **O quê:** a primeira abertura é a pasta Downloads real do Windows e do Mac. Depois de escolher um PDF, a próxima vez abre nessa pasta.
@@ -12,7 +133,7 @@ Formato: data · o que mudou · por que · o que não desfazer.
 
 - **O quê:** razão, responsável, endereço, complemento e cidade saem com a primeira letra de cada palavra; `de/da/do/del` ficam minúsculos. E-mail em minúsculo. UF em maiúsculo. CNPJ, CEP e telefone não mudam.
 - **Por quê:** o cartão da Receita vem em caixa alta; o card não precisa gritar.
-- **Não desfazer:** o valor original do PDF continua sendo a fonte; só a apresentação do input muda.
+- **Não desfazer:** o valor original do PDF continua sendo a fonte; a formatação de título não roda na digitação.
 
 ## 2026-10-27 — Farm: cartão CNPJ da Receita pelo texto do PDF
 

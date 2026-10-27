@@ -17,3 +17,7 @@ test-results/
 .idea/
 .vscode/
 !.vscode/extensions.json
+*.tsbuildinfo
+*.traineddata
+mapas/captures/*
+!mapas/captures/README.md

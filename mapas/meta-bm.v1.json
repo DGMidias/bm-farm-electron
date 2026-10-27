@@ -6,8 +6,22 @@
     {
       "id": "login",
       "match": {
-        "urlIncludes": ["facebook.com/login", "business.facebook.com/login"],
-        "anyText": ["Entrar", "Log in", "Senha", "Password"]
+        "urlIncludes": [
+          "facebook.com/login",
+          "business.facebook.com/login",
+          "business/loginpage",
+          "login_options",
+          "config_ref=biz_login"
+        ],
+        "anyText": [
+          "Entrar",
+          "Log in",
+          "Senha",
+          "Password",
+          "Comece a usar",
+          "Continuar com o Facebook",
+          "Continue with Facebook"
+        ]
       },
       "human": "login",
       "onMiss": ["portfolio.form", "unknown"]
@@ -21,11 +35,125 @@
       "onMiss": ["unknown"]
     },
     {
+      "id": "portfolio.unavailable",
+      "step": "portfolio",
+      "match": {
+        "urlIncludes": ["business.facebook.com/latest/home", "business_id="],
+        "anyText": [
+          "Não é possível acessar o Meta Business Suite",
+          "You can't access Meta Business Suite",
+          "não tem acesso a Páginas do Facebook",
+          "doesn't have access to Facebook Pages"
+        ]
+      },
+      "onMiss": ["portfolio.settings_users", "portfolio.switcher", "unknown"]
+    },
+    {
+      "id": "portfolio.settings_users",
+      "step": "portfolio",
+      "match": {
+        "urlIncludes": ["/latest/settings/business_users"]
+      },
+      "onMiss": ["portfolio.switcher", "unknown"]
+    },
+    {
+      "id": "portfolio.existing",
+      "step": "portfolio",
+      "match": {
+        "urlIncludes": ["business.facebook.com/latest/home", "nav_ref=bm_home_redirect"],
+        "anyText": [
+          "Meta Business Suite",
+          "Etapas para começar",
+          "Conheça o Meta Business Suite"
+        ]
+      },
+      "human": "unknown_screen",
+      "onMiss": ["portfolio.form", "unknown"]
+    },
+    {
+      "id": "portfolio.switcher",
+      "step": "portfolio",
+      "match": {
+        "anyText": ["Portfólios empresariais", "Business portfolios"]
+      },
+      "onMiss": ["portfolio.create", "portfolio.form", "unknown"]
+    },
+    {
+      "id": "portfolio.create",
+      "step": "portfolio",
+      "match": {
+        "anyText": [
+          "Nome do portfólio empresarial",
+          "Email comercial",
+          "Business portfolio name"
+        ]
+      },
+      "fields": ["razao_social", "nome", "sobrenome", "email_comercial"],
+      "onMiss": ["empresa.info", "login", "unknown"]
+    },
+    {
+      "id": "portfolio.add_people",
+      "step": "portfolio",
+      "match": {
+        "anyText": [
+          "Adicione pessoas a este portfólio empresarial",
+          "Add people to this business portfolio"
+        ]
+      },
+      "onMiss": ["portfolio.confirm", "portfolio.switcher", "unknown"]
+    },
+    {
+      "id": "portfolio.confirm",
+      "step": "portfolio",
+      "match": {
+        "anyText": [
+          "Analise e confirme seu portfólio empresarial",
+          "Review and confirm your business portfolio"
+        ]
+      },
+      "onMiss": ["portfolio.switcher", "portfolio.existing", "unknown"]
+    },
+    {
+      "id": "portfolio.add_assets",
+      "step": "portfolio",
+      "match": {
+        "anyText": [
+          "O que você quer adicionar a este portfólio empresarial",
+          "What do you want to add to this business portfolio",
+          "Não há nada disponível para ser reivindicado"
+        ]
+      },
+      "onMiss": ["portfolio.switcher", "portfolio.existing", "unknown"]
+    },
+    {
+      "id": "portfolio.landing",
+      "step": "portfolio",
+      "match": {
+        "urlIncludes": ["adsmanager/onboarding"],
+        "anyText": [
+          "Começar",
+          "Criar portfólio empresarial",
+          "Precisa criar um portfólio empresarial primeiro?",
+          "Alcance as pessoas certas com o Gerenciador de Anúncios",
+          "Get started",
+          "Create a business portfolio"
+        ]
+      },
+      "onMiss": ["portfolio.form", "unknown"]
+    },
+    {
       "id": "portfolio.form",
       "step": "portfolio",
       "match": {
         "urlIncludes": ["adsmanager/onboarding", "create_business"],
-        "anyText": ["Nome da sua conta e empresa", "Create a business portfolio"]
+        "anyText": [
+          "Nome da sua conta e empresa",
+          "Your business and account name",
+          "Seu email comercial",
+          "Business email",
+          "Crie seu portfólio empresarial",
+          "Create a business portfolio"
+        ]
       },
       "fields": ["razao_social", "responsavel", "email_comercial"],
       "onMiss": ["empresa.info", "login", "unknown"]

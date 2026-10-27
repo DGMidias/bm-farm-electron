@@ -1,10 +1,13 @@
 import type { DesktopApi } from "../preload";
 import { settingsToSave } from "@shared/farm-draft";
-import { DEFAULT_CONFIG, type AdsPowerProfile, type AppConfig, type AppLog, type ConnectionResult, type EngineStatus, type HistoryEvent, type HumanPause, type MenuId, type SmsActivation, type SmsService, type UpdateCheckResult } from "@shared/types";
+import { farmNeedsReview } from "@shared/farm-run";
+import { navShowsIntegrationAlert } from "@shared/integration-status";
+import { DEFAULT_CONFIG, type AdsPowerProfile, type AppConfig, type AppLog, type ConnectionResult, type EngineStatus, type FarmRunState, type HistoryEvent, type HumanPause, type MenuId, type SmsActivation, type SmsService, type UpdateCheckResult } from "@shared/types";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AdsPowerPage } from "./pages/AdsPowerPage";
 import { EmailPage } from "./pages/EmailPage";
 import { FarmPage } from "./pages/FarmPage";
+import { FarmRunPage } from "./pages/FarmRunPage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { SmsPage } from "./pages/SmsPage";
 import numeroVirtualLogo from "./assets/numero-virtual.png";
@@ -41,16 +44,21 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [update, setUpdate] = useState<UpdateCheckResult>();
   const [engine, setEngine] = useState<EngineStatus>({ running: false, mensagem: "Motor ocioso." });
+  const [farmRun, setFarmRun] = useState<FarmRunState>({ running: false, batchSize: 1, companies: [], mensagem: "Farm ocioso." });
+  const [farmTab, setFarmTab] = useState<string>();
   const [pause, setPause] = useState<HumanPause>();
   const [version, setVersion] = useState("0.1.0");
   const [logs, setLogs] = useState<AppLog[]>([]);
 
   useEffect(() => {
     void desktop()?.getConfig().then((saved) => {
-      if (saved) setConfig({ ...saved, empresas: [] });
+      if (saved) setConfig({ ...saved, empresas: saved.farm?.started ? saved.empresas ?? [] : [] });
     });
     void desktop()?.getHistory().then(setHistory);
     void desktop()?.engineStatus().then(setEngine);
+    void desktop()?.farmState().then((state) => {
+      if (state) setFarmRun(state);
+    });
     void desktop()?.platform().then((info) => setVersion(info.version));
     void desktop()?.listLogs().then((entries) => setLogs((entries as AppLog[]) ?? []));
     void desktop()?.checkUpdate().then((result) => {
@@ -58,17 +66,26 @@ export function App() {
     });
     const offLog = desktop()?.onLog((entry) => setLogs((current) => [entry as AppLog, ...current].slice(0, 300)));
     const offPause = desktop()?.onPause((next) => setPause(next as HumanPause));
+    const offFarm = desktop()?.onFarmState((state) => {
+      setFarmRun(state);
+      const attention = state.companies.find((item) => item.attention);
+      if (attention) setFarmTab(attention.id);
+      void desktop()?.getConfig().then((saved) => {
+        if (saved) setConfig((current) => ({ ...saved, empresas: current.empresas }));
+      });
+    });
     return () => {
       offLog?.();
       offPause?.();
+      offFarm?.();
     };
   }, []);
 
-  const persist = async (next: AppConfig) => {
+  const persist = useCallback(async (next: AppConfig) => {
     setConfig(next);
     const saved = await desktop()?.saveConfig(settingsToSave(next));
     if (saved) setConfig({ ...saved, empresas: next.empresas });
-  };
+  }, []);
 
   const keepDraft = (next: AppConfig) => {
     setConfig(next);
@@ -80,70 +97,47 @@ export function App() {
   };
 
   useEffect(() => {
-    if (menu !== "sms") return;
     let stop = false;
-    const poll = async () => {
+    let adsRunning = false;
+    const pollSms = async () => {
       const result = await desktop()?.testSms();
-      if (stop || !result) return;
-      setSmsResult(result);
+      if (!stop && result) setSmsResult(result);
     };
-    void poll();
-    const timer = window.setInterval(() => void poll(), 5000);
-    return () => {
-      stop = true;
-      window.clearInterval(timer);
-    };
-  }, [menu, config.sms.apiKey, config.sms.baseUrl]);
-
-  useEffect(() => {
-    if (menu !== "email") return;
-    let stop = false;
-    const poll = async () => {
+    const pollEmail = async () => {
       const result = await desktop()?.testEmail();
-      if (stop || !result) return;
-      setEmailResult(result);
+      if (!stop && result) setEmailResult(result);
     };
-    void poll();
-    const timer = window.setInterval(() => void poll(), 5000);
-    return () => {
-      stop = true;
-      window.clearInterval(timer);
-    };
-  }, [menu]);
-
-  useEffect(() => {
-    if (menu !== "adspower") return;
-    let stop = false;
-    const poll = async () => {
-      const result = await desktop()?.testAdsPower();
-      if (stop || !result) return;
-      setAdsResult(result);
-    };
-    void poll();
-    const timer = window.setInterval(() => void poll(), 5000);
-    return () => {
-      stop = true;
-      window.clearInterval(timer);
-    };
-  }, [menu, config.adspower.apiKey, config.adspower.baseUrl]);
-
-  useEffect(() => {
-    let stop = false;
-    const poll = async () => {
+    const pollAds = async () => {
+      if (adsRunning) return;
+      adsRunning = true;
       try {
         const list = await desktop()?.listAdsPowerProfiles();
-        if (!stop) setAdsProfiles(list ?? []);
-      } catch {
-        if (!stop) setAdsProfiles([]);
+        if (stop) return;
+        if (list) {
+          setAdsProfiles(list);
+          setAdsListError(undefined);
+          setAdsResult({ ok: true, mensagem: `AdsPower local · ${list.length} perfil${list.length === 1 ? "" : "is"}.` });
+        }
+      } catch (error) {
+        if (stop) return;
+        const mensagem = error instanceof Error ? error.message : "Falha no AdsPower.";
+        if (/too many request/i.test(mensagem)) return;
+        setAdsListError(mensagem);
+        setAdsResult({ ok: false, mensagem });
+      } finally {
+        adsRunning = false;
       }
     };
+    const poll = async () => {
+      await Promise.all([pollSms(), pollEmail(), pollAds()]);
+    };
     void poll();
-    const timer = window.setInterval(() => void poll(), 5000);
+    const timer = window.setInterval(() => void poll(), 8000);
     return () => {
       stop = true;
       window.clearInterval(timer);
     };
-  }, [config.adspower.apiKey, config.adspower.baseUrl]);
+  }, [config.sms.apiKey, config.sms.baseUrl, config.adspower.apiKey, config.adspower.baseUrl]);
 
   useEffect(() => {
     if (menu !== "sms" || !smsResult?.ok) return;
@@ -184,11 +178,14 @@ export function App() {
   const refreshAdsProfiles = useCallback(async () => {
     try {
       const list = await desktop()?.listAdsPowerProfiles();
-      setAdsProfiles(list ?? []);
-      setAdsListError(undefined);
+      if (list) {
+        setAdsProfiles(list);
+        setAdsListError(undefined);
+      }
     } catch (error) {
-      setAdsProfiles([]);
-      setAdsListError(error instanceof Error ? error.message : "Falha ao listar perfis do AdsPower.");
+      const mensagem = error instanceof Error ? error.message : "Falha ao listar perfis do AdsPower.";
+      if (/too many request/i.test(mensagem)) return;
+      setAdsListError(mensagem);
     }
   }, []);
 
@@ -306,25 +303,21 @@ export function App() {
     return (
       <FarmPage
         config={config}
-        engine={engine}
         profiles={adsProfiles}
         onChange={keepDraft}
         onRemove={(id) => keepDraft({ ...config, empresas: config.empresas.filter((item) => item.id !== id) })}
-        onStart={async (id) => {
-          const card = config.empresas.find((item) => item.id === id);
-          setEngine(await desktop()?.startSession(id, card));
-        }}
-        onFill={async (id, step) => {
-          const card = config.empresas.find((item) => item.id === id);
-          await desktop()?.fillStep(id, step, card);
-        }}
-        onDetect={async () => {
-          const detected = await desktop()?.detectScreen();
-          if (detected?.nodeId) setEngine((current) => ({ ...current, screen: detected.nodeId, mensagem: `Tela ${detected.nodeId}` }));
-        }}
-        onStop={async () => setEngine(await desktop()?.stopSession())}
-        onSaveSnapshot={async (name) => {
-          await desktop()?.saveSnapshot(name);
+        onStartFarm={async () => {
+          const next = {
+            ...config,
+            farm: { ...config.farm, started: true, batchSize: config.farm.batchSize },
+          };
+          await persist(next);
+          const state = await desktop()?.startFarm(next.empresas, next.farm.batchSize);
+          if (state) {
+            setFarmRun(state);
+            setFarmTab(state.companies[0]?.id);
+            setMenu("farm");
+          }
         }}
         onPickDocument={async (id) => {
           const card = config.empresas.find((item) => item.id === id);
@@ -337,10 +330,12 @@ export function App() {
         }}
       />
     );
-  }, [adsListError, adsProfiles, adsResult, busy, config, emailAction, emailResult, engine, history, logs, menu, openInbox, refreshAdsProfiles, refreshInboxes, refreshSmsNumbers, smsAction, smsActivation, smsResult, smsServices]);
+  }, [adsListError, adsProfiles, adsResult, busy, config, emailAction, emailResult, farmRun, farmTab, history, logs, menu, openInbox, persist, refreshAdsProfiles, refreshInboxes, refreshSmsNumbers, smsAction, smsActivation, smsResult, smsServices]);
+
+  const farmLocked = farmNeedsReview(farmRun);
 
   return (
-    <div className="app">
+    <div className={`app${farmLocked ? " farm-locked" : ""}`}>
       <aside className="sidebar">
         <div className="brand">
           <strong>BM Farm</strong>
@@ -348,9 +343,20 @@ export function App() {
         </div>
         <nav className="nav">
           {MENUS.map((item) => (
-            <button key={item.id} className={menu === item.id ? "active" : ""} type="button" onClick={() => setMenu(item.id)}>
+            <button
+              key={item.id}
+              className={menu === item.id ? "active" : ""}
+              type="button"
+              disabled={farmLocked}
+              onClick={() => setMenu(item.id)}
+            >
               {item.icon ? <img className="nav-logo" src={item.icon} alt="" /> : null}
               {item.label}
+              {navShowsIntegrationAlert(item.id, { sms: smsResult, email: emailResult, adspower: adsResult }) ? (
+                <span className="attention" aria-label="integração falhou">
+                  !
+                </span>
+              ) : null}
             </button>
           ))}
         </nav>
@@ -366,8 +372,40 @@ export function App() {
           ) : null}
         </div>
       </aside>
-      <main className="workspace">{page}</main>
-      {pause ? (
+      <main className="workspace">
+        {farmLocked ? (
+          <FarmRunPage
+            state={farmRun}
+            selectedId={farmTab}
+            onSelect={setFarmTab}
+            onStop={async () => {
+              const state = await desktop()?.stopFarm();
+              if (state) setFarmRun(state);
+              setPause(undefined);
+            }}
+            onResume={async (pauseId) => {
+              await desktop()?.resumeHuman(pauseId);
+              setPause(undefined);
+            }}
+            onReport={async (empresaId) => {
+              const state = await desktop()?.reportFarmScreen(empresaId);
+              if (state) setFarmRun(state);
+              setPause(undefined);
+            }}
+            onDismiss={async (empresaId) => {
+              const state = await desktop()?.dismissFarmCompany(empresaId);
+              if (state) setFarmRun(state);
+            }}
+            onDismissAll={async () => {
+              const state = await desktop()?.dismissFarm();
+              if (state) setFarmRun(state);
+            }}
+          />
+        ) : (
+          page
+        )}
+      </main>
+      {pause && !farmLocked ? (
         <div className="modal-backdrop" role="dialog" aria-modal="true">
           <div className="modal">
             <h2>Pausa humana</h2>

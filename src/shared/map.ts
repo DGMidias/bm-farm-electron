@@ -1,3 +1,4 @@
+import { isPortfolioCreateForm } from "./portfolio-fill";
 import type { ScreenSnapshot } from "./types";
 
 export interface MapNode {
@@ -19,16 +20,29 @@ export interface PageMap {
 }
 
 export function scoreNode(node: MapNode, snapshot: ScreenSnapshot): number {
-  let score = 0;
+  if (node.id === "login" && isPortfolioCreateForm(snapshot.texts)) return 0;
+  if (node.id === "unknown") return 1;
   const url = snapshot.url.toLowerCase();
   const blob = `${snapshot.title} ${snapshot.texts.join(" ")}`.toLowerCase();
-  for (const part of node.match?.urlIncludes ?? []) {
-    if (url.includes(part.toLowerCase())) score += 4;
+  const urlParts = node.match?.urlIncludes ?? [];
+  const required = node.match?.anyText ?? [];
+  let score = 0;
+  let urlHits = 0;
+  let textHits = 0;
+  for (const part of urlParts) {
+    if (url.includes(part.toLowerCase())) {
+      score += 4;
+      urlHits += 1;
+    }
   }
-  for (const text of node.match?.anyText ?? []) {
-    if (blob.includes(text.toLowerCase())) score += 2;
+  for (const text of required) {
+    if (blob.includes(text.toLowerCase())) {
+      score += 2;
+      textHits += 1;
+    }
   }
-  if (node.id === "unknown") score = 1;
+  if (urlParts.length && urlHits === 0) return 0;
+  if (required.length && textHits === 0) return 0;
   return score;
 }
 

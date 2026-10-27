@@ -3,10 +3,12 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirName, downloadsPath, joinPath, modKey, pdfPickerPath, platformId, userDataPath } from "@harness/compat";
 import { DEFAULT_DDD, isBrDdd } from "@shared/ddd";
-import { validateEmpresa, type EmpresaCard } from "@shared/empresa";
-import type { AppConfig, HistoryEvent } from "@shared/types";
+import { validateEmpresa, validateFarmStart, type EmpresaCard } from "@shared/empresa";
+import { clampBatchSize } from "@shared/farm-etapas";
+import type { AppConfig, FarmEvent, HistoryEvent, HumanPause } from "@shared/types";
 import { ADSPOWER_PROBE_URL, listAdsPowerProfiles, testAdsPower } from "./adspower";
 import { FarmEngine, loadPageMap } from "./engine";
+import { FarmOrchestrator } from "./farm-orchestrator";
 import { createInbox, probeInbox, rememberInbox, refreshInboxMessages, testEmail } from "./mail-tm";
 import { configureLogger, listLogs, log, logError, onLog } from "./log";
 import { cancelSmsActivation, createSmsNumber, listSmsActivations, listSmsServices, normalizeDdd, normalizeSmsBase, persistActivationSnapshot, readSmsActivation, rememberActivation, sanitizeSmsKey, testSms } from "./sms";
@@ -17,7 +19,26 @@ import { checkUpdate, downloadAndInstall, fetchLatest } from "./updater";
 const mainDir = fileURLToPath(new URL(".", import.meta.url));
 const repoRoot = joinPath(mainDir, "..", "..");
 const store = new LocalStore({ root: app.isPackaged ? userDataPath() : joinPath(repoRoot, "userData") });
-const engine = new FarmEngine(repoRoot, loadPageMap(repoRoot));
+async function persistCompanyInbox(card: Pick<EmpresaCard, "id" | "razao_social" | "adspower_profile">) {
+  const config = store.readConfig();
+  const inbox = await createInbox(config.email, {
+    empresaId: card.id,
+    razaoSocial: card.razao_social,
+    adspowerProfile: card.adspower_profile,
+  });
+  config.email.lastAddress = inbox.address;
+  config.email.lastToken = inbox.token;
+  config.email.password = inbox.password;
+  config.email.knownInboxes = rememberInbox(config.email.knownInboxes, inbox);
+  config.empresas = (config.empresas ?? []).map((item) =>
+    item.id === card.id ? { ...item, email_comercial: inbox.address } : item,
+  );
+  store.writeConfig(config);
+  return inbox;
+}
+
+const engine = new FarmEngine(repoRoot, loadPageMap(repoRoot), persistCompanyInbox);
+const orchestrator = new FarmOrchestrator(repoRoot, persistCompanyInbox);
 
 function createWindow(): void {
   const window = new BrowserWindow({
@@ -82,6 +103,7 @@ app.whenReady().then(() => {
   log("info", "app", `processo principal pronto (${platformId()})`);
   const snapshotsDir = joinPath(repoRoot, "mapas", "snapshots");
   mkdirSync(snapshotsDir, { recursive: true });
+  mkdirSync(joinPath(repoRoot, "mapas", "captures"), { recursive: true });
 
   handle("app:platform", () => ({
     id: platformId(),
@@ -267,9 +289,45 @@ app.whenReady().then(() => {
     if (!card) throw new Error("Empresa não encontrada.");
     return engine.fillStep(card, step as "portfolio");
   });
+  handle("farm:start", async (maybeCards, maybeBatch) => {
+    const config = store.readConfig();
+    const cards = Array.isArray(maybeCards) && maybeCards.length ? (maybeCards as EmpresaCard[]) : config.empresas;
+    const ads = await testAdsPower(config.adspower);
+    if (!ads.ok) throw new Error(ads.mensagem || "AdsPower local indisponível.");
+    const profiles = await listAdsPowerProfiles(config.adspower).catch(() => []);
+    const known = profiles.flatMap((item) => [item.userId, item.serial].filter((value): value is string => Boolean(value)));
+    const errors = validateFarmStart(cards, known);
+    if (errors.length) throw new Error(errors[0]);
+    const batch = clampBatchSize(Number(maybeBatch ?? config.farm.batchSize), cards.length);
+    config.empresas = cards;
+    config.farm.started = true;
+    config.farm.batchSize = batch;
+    store.writeConfig(config);
+    for (const card of cards) {
+      store.appendHistory({
+        id: crypto.randomUUID(),
+        timestamp: new Date().toISOString(),
+        empresaId: card.id,
+        razaoSocial: card.razao_social,
+        cnpj: card.cnpj,
+        adspowerProfile: card.adspower_profile,
+        etapa: "portfolio",
+        status: "em_andamento",
+        mensagem: "Farm iniciado (portfólio).",
+      });
+    }
+    return orchestrator.start(config, cards, batch);
+  });
+  handle("farm:stop", () => orchestrator.stop(store.readConfig().adspower));
+  handle("farm:report", (empresaId) => orchestrator.report(String(empresaId), store.readConfig().adspower));
+  handle("farm:dismiss", (empresaId) => orchestrator.dismiss(String(empresaId)));
+  handle("farm:dismiss-all", () => orchestrator.dismissAll());
+  handle("farm:state", () => orchestrator.getState());
   handle("engine:resume", (pauseId) => {
-    engine.resume(String(pauseId));
-    return engine.status();
+    const id = String(pauseId);
+    orchestrator.resume(id);
+    engine.resume(id);
+    return { engine: engine.status(), farm: orchestrator.getState() };
   });
   handle("engine:stop", async () => {
     await engine.stop(store.readConfig().adspower);
@@ -284,10 +342,32 @@ app.whenReady().then(() => {
     return { file, snapshot };
   });
 
-  engine.on("pause", (pause) => {
+  const broadcast = (channel: string, payload: unknown) => {
     for (const window of BrowserWindow.getAllWindows()) {
-      window.webContents.send("engine:pause", pause);
+      window.webContents.send(channel, payload);
     }
+  };
+  engine.on("pause", (pause: HumanPause) => broadcast("engine:pause", pause));
+  orchestrator.on("pause", (pause: HumanPause) => broadcast("engine:pause", pause));
+  orchestrator.on("event", (event: FarmEvent) => broadcast("farm:event", event));
+  orchestrator.on("state", (state) => broadcast("farm:state", state));
+  orchestrator.on("company", ({ card, result }: { card: EmpresaCard; result: "ok" | "paused" | "erro" }) => {
+    store.appendHistory({
+      id: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      empresaId: card.id,
+      razaoSocial: card.razao_social,
+      cnpj: card.cnpj,
+      adspowerProfile: card.adspower_profile,
+      etapa: "portfolio",
+      status: result === "ok" ? "ok" : result === "paused" ? "pausado_humano" : "erro",
+      mensagem:
+        result === "ok"
+          ? `Portfólio criado · ${card.razao_social} · ${card.email_comercial}.`
+          : result === "paused"
+            ? "Pausa humana."
+            : "Falha no portfólio.",
+    });
   });
 
   createWindow();
