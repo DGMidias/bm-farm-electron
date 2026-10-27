@@ -1,26 +1,43 @@
 import { FIELD_LIMITS } from "@harness/ui-contract";
+import { adsProfileOption } from "@shared/cnpj-pdf";
 import { emptyEmpresa, validateEmpresa, type EmpresaCard } from "@shared/empresa";
-import type { AppConfig, EngineStatus } from "@shared/types";
+import { formatEmpresaFields } from "@shared/empresa-format";
+import type { AdsPowerProfile, AppConfig, EngineStatus } from "@shared/types";
 import { Field } from "../components/Field";
 
 interface Props {
   config: AppConfig;
   engine: EngineStatus;
+  profiles: AdsPowerProfile[];
   onChange: (config: AppConfig) => void;
   onStart: (id: string) => Promise<void>;
   onFill: (id: string, step: string) => Promise<void>;
   onDetect: () => Promise<void>;
   onStop: () => Promise<void>;
   onSaveSnapshot: (name: string) => Promise<void>;
+  onPickDocument: (id: string) => Promise<void>;
+  onRemove: (id: string) => void;
 }
 
 const STEPS = ["portfolio", "empresa", "whatsapp", "verificacao_dados", "verificacao_nome", "verificacao_endereco", "verificacao_contato"];
 
-export function FarmPage({ config, engine, onChange, onStart, onFill, onDetect, onStop, onSaveSnapshot }: Props) {
+export function FarmPage({
+  config,
+  engine,
+  profiles,
+  onChange,
+  onStart,
+  onFill,
+  onDetect,
+  onStop,
+  onSaveSnapshot,
+  onPickDocument,
+  onRemove,
+}: Props) {
   const update = (id: string, patch: Partial<EmpresaCard>) => {
     onChange({
       ...config,
-      empresas: config.empresas.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+      empresas: config.empresas.map((item) => (item.id === id ? { ...item, ...formatEmpresaFields(patch) } : item)),
     });
   };
 
@@ -28,7 +45,7 @@ export function FarmPage({ config, engine, onChange, onStart, onFill, onDetect, 
     <section className="page">
       <h1>Farm de BM</h1>
       <p className="muted">
-        Cada card é uma empresa e um perfil AdsPower. A sessão supervisionada preenche no navegador do AdsPower.
+        Rascunho desta aba some ao fechar o app. Só grava depois de iniciar o farm. O PDF é o comprovante CNPJ da Receita.
       </p>
       <div className="row">
         <button className="btn" type="button" onClick={() => onChange({ ...config, empresas: [...config.empresas, emptyEmpresa()] })}>
@@ -48,9 +65,28 @@ export function FarmPage({ config, engine, onChange, onStart, onFill, onDetect, 
       <div className="list empresa-list">
         {config.empresas.map((card, index) => {
           const errors = validateEmpresa(card);
+          const options = profiles.map(adsProfileOption);
+          if (card.adspower_profile && !options.some((item) => item.value === card.adspower_profile)) {
+            options.unshift({ value: card.adspower_profile, label: card.adspower_profile });
+          }
           return (
             <article className="card" key={card.id}>
-              <strong>Empresa {index + 1}</strong>
+              <div className="card-head">
+                <strong>Empresa {index + 1}</strong>
+                <div className="row">
+                  <label className="toggle">
+                    <input
+                      type="checkbox"
+                      checked={card.ler_pdf_automatico}
+                      onChange={(event) => update(card.id, { ler_pdf_automatico: event.target.checked })}
+                    />
+                    Ler PDF
+                  </label>
+                  <button className="btn ghost" type="button" onClick={() => onRemove(card.id)}>
+                    Excluir empresa
+                  </button>
+                </div>
+              </div>
               <div className="form-grid">
                 <Field id={`${card.id}-razao`} label="Razão social" maxLength={FIELD_LIMITS.medium} value={card.razao_social} onChange={(razao_social) => update(card.id, { razao_social })} />
                 <Field id={`${card.id}-cnpj`} label="CNPJ" maxLength={FIELD_LIMITS.cnpj} value={card.cnpj} onChange={(cnpj) => update(card.id, { cnpj })} />
@@ -63,8 +99,30 @@ export function FarmPage({ config, engine, onChange, onStart, onFill, onDetect, 
                 <Field id={`${card.id}-cep`} label="CEP" maxLength={FIELD_LIMITS.cep} value={card.cep} onChange={(cep) => update(card.id, { cep })} />
                 <Field id={`${card.id}-tel`} label="Telefone" maxLength={FIELD_LIMITS.phone} value={card.telefone} onChange={(telefone) => update(card.id, { telefone })} />
                 <Field id={`${card.id}-site`} label="Site HTTPS" maxLength={FIELD_LIMITS.url} value={card.site} onChange={(site) => update(card.id, { site })} />
-                <Field id={`${card.id}-doc`} label="Documento original" maxLength={FIELD_LIMITS.long} value={card.documento_original} onChange={(documento_original) => update(card.id, { documento_original })} />
-                <Field id={`${card.id}-ads`} label="Perfil AdsPower (user_id ou serial)" maxLength={FIELD_LIMITS.medium} value={card.adspower_profile} onChange={(adspower_profile) => update(card.id, { adspower_profile })} />
+                <div className="field wide">
+                  <span>Comprovante CNPJ</span>
+                  <div className="row">
+                    <button className="btn secondary" type="button" onClick={() => void onPickDocument(card.id)}>
+                      Escolher PDF
+                    </button>
+                    <span className="muted">{card.documento_original || "Nenhum arquivo"}</span>
+                  </div>
+                </div>
+                <label className="field" htmlFor={`${card.id}-ads`}>
+                  <span>Perfil AdsPower</span>
+                  <select
+                    id={`${card.id}-ads`}
+                    value={card.adspower_profile}
+                    onChange={(event) => update(card.id, { adspower_profile: event.target.value })}
+                  >
+                    <option value="">{profiles.length ? "Selecione um perfil" : "Nenhum perfil visível ainda"}</option>
+                    {options.map((item) => (
+                      <option key={item.value} value={item.value}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               </div>
               <label className="check">
                 <input type="checkbox" checked={card.usar_email_temporario} onChange={(event) => update(card.id, { usar_email_temporario: event.target.checked })} />

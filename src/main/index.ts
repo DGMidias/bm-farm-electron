@@ -1,16 +1,17 @@
-import { app, BrowserWindow, ipcMain, shell } from "electron";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { joinPath, modKey, platformId, userDataPath } from "@harness/compat";
+import { dirName, downloadsPath, joinPath, modKey, pdfPickerPath, platformId, userDataPath } from "@harness/compat";
 import { DEFAULT_DDD, isBrDdd } from "@shared/ddd";
-import { validateEmpresa } from "@shared/empresa";
+import { validateEmpresa, type EmpresaCard } from "@shared/empresa";
 import type { AppConfig, HistoryEvent } from "@shared/types";
-import { listAdsPowerProfiles, testAdsPower } from "./adspower";
+import { ADSPOWER_PROBE_URL, listAdsPowerProfiles, testAdsPower } from "./adspower";
 import { FarmEngine, loadPageMap } from "./engine";
 import { createInbox, probeInbox, rememberInbox, refreshInboxMessages, testEmail } from "./mail-tm";
 import { configureLogger, listLogs, log, logError, onLog } from "./log";
 import { cancelSmsActivation, createSmsNumber, listSmsActivations, listSmsServices, normalizeDdd, normalizeSmsBase, persistActivationSnapshot, readSmsActivation, rememberActivation, sanitizeSmsKey, testSms } from "./sms";
 import { LocalStore } from "./store";
+import { readEmpresaDocument } from "./pdf-empresa";
 import { checkUpdate, downloadAndInstall, fetchLatest } from "./updater";
 
 const mainDir = fileURLToPath(new URL(".", import.meta.url));
@@ -56,6 +57,12 @@ function broadcastLog(entry: unknown): void {
   for (const window of BrowserWindow.getAllWindows()) {
     window.webContents.send("log:entry", entry);
   }
+}
+
+function resolveEmpresa(empresaId: unknown, maybeCard: unknown, config: AppConfig): EmpresaCard | undefined {
+  const draft = maybeCard as EmpresaCard | undefined;
+  if (draft && typeof draft === "object" && draft.id === empresaId) return draft;
+  return config.empresas.find((item) => item.id === empresaId);
 }
 
 function handle(channel: string, fn: (...args: unknown[]) => unknown): void {
@@ -165,7 +172,7 @@ app.whenReady().then(() => {
   handle("adspower:profiles", () => listAdsPowerProfiles(store.readConfig().adspower));
   handle("adspower:probe", () => {
     const config = store.readConfig();
-    return engine.startProfile(config.adspower, config.adspower.testProfile);
+    return engine.startProfile(config.adspower, config.adspower.testProfile, ADSPOWER_PROBE_URL);
   });
   handle("email:test", () => testEmail());
   handle("email:create", async () => {
@@ -210,6 +217,20 @@ app.whenReady().then(() => {
     store.writeConfig(config);
     return refreshed.messages;
   });
+  handle("empresa:pick-document", async (autoFill) => {
+    const config = store.readConfig();
+    const downloads = app.getPath("downloads") || downloadsPath();
+    const chosen = await dialog.showOpenDialog({
+      title: "Comprovante CNPJ",
+      defaultPath: pdfPickerPath(config.farm.lastPdfDir, downloads, existsSync),
+      filters: [{ name: "PDF", extensions: ["pdf"] }],
+      properties: ["openFile"],
+    });
+    if (chosen.canceled || !chosen.filePaths[0]) return undefined;
+    config.farm.lastPdfDir = dirName(chosen.filePaths[0]);
+    store.writeConfig(config);
+    return readEmpresaDocument(chosen.filePaths[0], Boolean(autoFill));
+  });
   handle("update:check", () => checkUpdate(app.getVersion(), store.readConfig().update.latestUrl));
   handle("update:apply", async () => {
     const config = store.readConfig();
@@ -220,9 +241,9 @@ app.whenReady().then(() => {
     mkdirSync(dir, { recursive: true });
     return downloadAndInstall(artifact.url, artifact.sha512, dir);
   });
-  handle("engine:start", async (empresaId) => {
+  handle("engine:start", async (empresaId, maybeCard) => {
     const config = store.readConfig();
-    const card = config.empresas.find((item) => item.id === empresaId);
+    const card = resolveEmpresa(empresaId, maybeCard, config);
     if (!card) throw new Error("Empresa não encontrada.");
     const errors = validateEmpresa(card);
     if (errors.length) throw new Error(errors[0]);
@@ -241,8 +262,8 @@ app.whenReady().then(() => {
     return status;
   });
   handle("engine:detect", () => engine.detect());
-  handle("engine:fill", (empresaId, step) => {
-    const card = store.readConfig().empresas.find((item) => item.id === empresaId);
+  handle("engine:fill", (empresaId, step, maybeCard) => {
+    const card = resolveEmpresa(empresaId, maybeCard, store.readConfig());
     if (!card) throw new Error("Empresa não encontrada.");
     return engine.fillStep(card, step as "portfolio");
   });

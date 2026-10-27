@@ -36,6 +36,20 @@ export function joinPath(...parts: string[]): string {
   return path.join(...parts);
 }
 
+export function dirName(filePath: string): string {
+  return path.dirname(filePath);
+}
+
+export function pdfPickerPath(lastDir: string | undefined, downloads: string, exists: (value: string) => boolean): string {
+  const remembered = lastDir?.trim();
+  if (remembered && exists(remembered)) return remembered;
+  return downloads;
+}
+
+export function downloadsPath(platform = process.platform): string {
+  return joinPath(homedir(), "Downloads");
+}
+
 export function userDataPath(appName = "electron-bm-farm", platform = process.platform): string {
   const home = homedir();
   const id = platformId(platform);

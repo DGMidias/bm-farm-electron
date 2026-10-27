@@ -1,4 +1,5 @@
 import { FIELD_LIMITS } from "@harness/ui-contract";
+import { emptyEmpresa } from "@shared/empresa";
 import { DEFAULT_CONFIG } from "@shared/types";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -6,7 +7,9 @@ import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "@renderer/App";
 import { Field } from "@renderer/components/Field";
+import { AdsPowerPage } from "@renderer/pages/AdsPowerPage";
 import { EmailPage } from "@renderer/pages/EmailPage";
+import { FarmPage } from "@renderer/pages/FarmPage";
 import { SmsPage } from "@renderer/pages/SmsPage";
 
 describe("UI contrato", () => {
@@ -20,8 +23,10 @@ describe("UI contrato", () => {
     expect(screen.getByRole("button", { name: /Número Virtual/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Email \(mail\.tm\)/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /AdsPower/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Farm de BM/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Histórico/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Farm de BM$/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Histórico$/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /4 · Farm/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Ainda não verificada/)).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /Número Virtual/ }));
     expect(screen.getByRole("heading", { name: /Provedor de SMS/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Gerar número/ })).toBeInTheDocument();
@@ -37,7 +42,102 @@ describe("UI contrato", () => {
     await user.click(screen.getByRole("button", { name: /Caixas/ }));
     expect(screen.getByRole("button", { name: /Gerar caixa nova/ })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /AdsPower/ }));
-    expect(screen.getByRole("button", { name: /Abrir e controlar navegador/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Testar conexão/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/Checando AdsPower/)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Perfil de teste/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: /Grupo/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^Farm de BM$/ }));
+    expect(screen.getByRole("heading", { name: /Farm de BM/ })).toBeInTheDocument();
+  });
+
+  it("no card da empresa o PDF é seletor e o toggle de leitura vem ligado", () => {
+    const config = structuredClone(DEFAULT_CONFIG);
+    config.empresas = [emptyEmpresa("e1")];
+    render(
+      <FarmPage
+        config={config}
+        engine={{ running: false, mensagem: "Motor ocioso." }}
+        profiles={[
+          { userId: "h1yynkm", serial: "2", name: "Perfil 2" },
+          { userId: "abc123", serial: "1", name: "Perfil 1" },
+        ]}
+        onChange={() => undefined}
+        onStart={async () => undefined}
+        onFill={async () => undefined}
+        onDetect={async () => undefined}
+        onStop={async () => undefined}
+        onSaveSnapshot={async () => undefined}
+        onPickDocument={async () => undefined}
+        onRemove={async () => undefined}
+      />,
+    );
+    expect(screen.getByRole("checkbox", { name: /Ler PDF/ })).toBeChecked();
+    expect(screen.getByRole("button", { name: /Escolher PDF/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Excluir empresa/ })).toBeInTheDocument();
+    expect(screen.getByLabelText(/Perfil AdsPower/)).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /2 · Perfil 2/ })).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: /Documento original/ })).not.toBeInTheDocument();
+  });
+
+  it("lista os perfis do AdsPower quando a API local está ok", async () => {
+    vi.useFakeTimers();
+    const onListProfiles = vi.fn(async () => undefined);
+    render(
+      <AdsPowerPage
+        config={DEFAULT_CONFIG}
+        live={{ ok: true, mensagem: "AdsPower local ok." }}
+        profiles={[
+          {
+            userId: "h1yynkm",
+            serial: "2",
+            name: "Loja Centro",
+            groupName: "BMs",
+            username: "loja@meta",
+            domain: "facebook.com",
+            remark: "proxy BR",
+            ip: "13.251.172.174",
+            ipCountry: "sg",
+            lastOpenAt: "2021-05-18T10:17:10.000Z",
+          },
+        ]}
+        onChange={() => undefined}
+        onListProfiles={onListProfiles}
+      />,
+    );
+    expect(screen.queryByLabelText(/Perfil de teste/)).not.toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /^Nº$/ })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /Nome/ })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /ID/ })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /Grupo/ })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /Conta/ })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /Plataforma/ })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /Proxy/ })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /Observação/ })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /Status/ })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /Última abertura/ })).toBeInTheDocument();
+    expect(screen.getByText("Loja Centro")).toBeInTheDocument();
+    expect(screen.getByText("h1yynkm")).toBeInTheDocument();
+    expect(screen.getByText("BMs")).toBeInTheDocument();
+    expect(onListProfiles).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    expect(onListProfiles).toHaveBeenCalledTimes(2);
+  });
+
+  it("não finge lista vazia quando o GET de perfis é plano pago", () => {
+    render(
+      <AdsPowerPage
+        config={DEFAULT_CONFIG}
+        live={{ ok: true, mensagem: "AdsPower local ok." }}
+        profiles={[]}
+        listError="A listagem oficial é plano pago. Buscando pelos seriais locais."
+        onChange={() => undefined}
+        onListProfiles={async () => undefined}
+      />,
+    );
+    expect(screen.queryByText(/Crie um perfil no AdsPower/)).not.toBeInTheDocument();
+    expect(screen.getByText(/plano pago/i)).toBeInTheDocument();
   });
 
   it("busca números toda vez que a subaba Números abre", async () => {

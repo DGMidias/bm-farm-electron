@@ -37,7 +37,11 @@ export class LocalStore {
         email: { ...DEFAULT_CONFIG.email, ...parsed.email },
         adspower: { ...DEFAULT_CONFIG.adspower, ...parsed.adspower },
         update: { ...DEFAULT_CONFIG.update, ...parsed.update },
-        empresas: parsed.empresas ?? [],
+        farm: { ...DEFAULT_CONFIG.farm, ...parsed.farm },
+        empresas: (parsed.empresas ?? []).map((item) => ({
+          ...item,
+          ler_pdf_automatico: item.ler_pdf_automatico !== false,
+        })),
       };
     } catch {
       return structuredClone(DEFAULT_CONFIG);
@@ -45,7 +49,7 @@ export class LocalStore {
   }
 
   writeConfig(config: AppConfig): void {
-    writeFileSync(this.file("config.json"), JSON.stringify(config, null, 2), "utf8");
+    writeFileSync(this.file("config.json"), JSON.stringify({ ...config, empresas: [] }, null, 2), "utf8");
   }
 
   readHistory(): HistoryEvent[] {

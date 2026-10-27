@@ -4,25 +4,19 @@ import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 import { joinPath, spawnInstaller, type LatestJson } from "@harness/compat";
 import type { UpdateCheckResult } from "@shared/types";
-import { evaluateUpdate, verifySha512 } from "@shared/update";
+import { evaluateUpdate, resolveLatestUrl, verifySha512 } from "@shared/update";
 
 export async function fetchLatest(latestUrl: string): Promise<LatestJson> {
-  if (!latestUrl.trim()) throw new Error("URL de latest.json vazia.");
-  const response = await fetch(latestUrl);
+  const url = resolveLatestUrl(latestUrl);
+  const response = await fetch(url);
+  if (response.status === 404) throw new Error("Ainda não há release publicada no GitHub.");
   if (!response.ok) throw new Error(`latest.json HTTP ${response.status}`);
   return (await response.json()) as LatestJson;
 }
 
-export async function checkUpdate(current: string, latestUrl: string, platform = process.platform): Promise<UpdateCheckResult> {
-  if (!latestUrl.trim()) {
-    return {
-      current,
-      newer: false,
-      mensagem: "Configure a URL do latest.json para verificar atualizações.",
-    };
-  }
+export async function checkUpdate(current: string, latestUrl?: string, platform = process.platform): Promise<UpdateCheckResult> {
   try {
-    const latest = await fetchLatest(latestUrl);
+    const latest = await fetchLatest(resolveLatestUrl(latestUrl));
     const result = evaluateUpdate(current, latest, platform);
     return {
       current,

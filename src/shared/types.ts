@@ -30,8 +30,27 @@ export interface AdsPowerConfig {
   testProfile: string;
 }
 
+export interface AdsPowerProfile {
+  userId: string;
+  serial?: string;
+  name?: string;
+  groupName?: string;
+  username?: string;
+  domain?: string;
+  remark?: string;
+  ip?: string;
+  ipCountry?: string;
+  createdAt?: string;
+  lastOpenAt?: string;
+  status?: string;
+}
+
 export interface UpdateConfig {
   latestUrl: string;
+}
+
+export interface FarmUiConfig {
+  lastPdfDir: string;
 }
 
 export interface AppConfig {
@@ -39,6 +58,7 @@ export interface AppConfig {
   email: EmailConfig;
   adspower: AdsPowerConfig;
   update: UpdateConfig;
+  farm: FarmUiConfig;
   empresas: EmpresaCard[];
 }
 
@@ -199,6 +219,9 @@ export const DEFAULT_CONFIG: AppConfig = {
   },
   update: {
     latestUrl: "",
+  },
+  farm: {
+    lastPdfDir: "",
   },
   empresas: [],
 };

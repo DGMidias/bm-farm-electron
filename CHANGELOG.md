@@ -2,6 +2,54 @@
 
 Formato: data · o que mudou · por que · o que não desfazer.
 
+## 2026-10-27 — Farm: seletor de PDF lembra a última pasta
+
+- **O quê:** a primeira abertura é a pasta Downloads real do Windows e do Mac. Depois de escolher um PDF, a próxima vez abre nessa pasta.
+- **Por quê:** sempre cair em Downloads obrigava a navegar de novo até `documentos`.
+- **Não desfazer:** se a pasta sumir, volta para Downloads. A pasta fica na config, não no rascunho da empresa.
+
+## 2026-10-27 — Farm: nomes em título, e-mail em minúsculo
+
+- **O quê:** razão, responsável, endereço, complemento e cidade saem com a primeira letra de cada palavra; `de/da/do/del` ficam minúsculos. E-mail em minúsculo. UF em maiúsculo. CNPJ, CEP e telefone não mudam.
+- **Por quê:** o cartão da Receita vem em caixa alta; o card não precisa gritar.
+- **Não desfazer:** o valor original do PDF continua sendo a fonte; só a apresentação do input muda.
+
+## 2026-10-27 — Farm: cartão CNPJ da Receita pelo texto do PDF
+
+- **O quê:** o comprovante impresso em `cnpjreva/comprovante` é lido pelo texto ToUnicode (não por OCR). Preenche razão (`NOME EMPRESARIAL`), CNPJ (`NÚMERO DE INSCRIÇÃO`), endereço (`LOGRADOURO` + `NÚMERO`), cidade, UF e complemento. Asteriscos no complemento ficam vazios. CNAE não vira CNPJ.
+- **Por quê:** o PDF do Chrome é `about:blank` com fonte CID; o OCR lia CNAE e inventava `00.332.959/9474-23`.
+- **Não desfazer:** e-mail, telefone e CEP continuam vindo do mesmo cartão; OCR só entra se o texto embutido não tiver razão e CNPJ.
+
+## 2026-10-27 — Farm: OCR por palavras, select AdsPower e rascunho
+
+- **O quê:** o comprovante é lido pelas palavras do OCR (não só telefone/CEP). O perfil AdsPower vira select atualizado a cada 5s nesta aba. Cada card tem Excluir. O rascunho das empresas não grava no disco até o farm começar.
+- **Por quê:** o GET de listagem pago e o OCR em página inteira perdiam razão, CNPJ e endereço; persistir o card cedo apagava o trabalho ao fechar sem farmar.
+- **Não desfazer:** SMS, e-mail e AdsPower continuam persistidos; o farm só fica na memória enquanto troca de aba.
+
+## 2026-10-27 — Farm: ícones, update no GitHub e PDF da Receita
+
+- **O quê:** Farm e Histórico ficam ícone + nome. O app checa atualização sozinho ao abrir, no `latest.json` do GitHub Releases. O comprovante CNPJ vira seletor de PDF (pasta Downloads); o toggle **Ler PDF** (ligado) preenche razão, CNPJ, endereço, bairro, cidade, UF, CEP, telefone, e-mail e site.
+- **Por quê:** npm não atualiza app compilado; a release com `.exe` (Windows) e `.zip` (Mac) é o caminho. O PDF da Receita já tem os dados da empresa.
+- **Não desfazer:** responsável e perfil AdsPower continuam manuais; CAPTCHA/OTP seguem pausa humana.
+
+## 2026-10-27 — AdsPower: listar perfis sem o GET pago
+
+- **O quê:** se `/user/list` vier "paid subscriptions", o app não finge lista vazia. Ele descobre os perfis pelo serial via `/browser/active` e mostra o status aberto/fechado.
+- **Por quê:** no plano gratuito a listagem oficial é bloqueada, mas os 2 perfis locais respondem por serial.
+- **Não desfazer:** com plano pago o GET /user/list continua sendo a fonte rica (nome, grupo, proxy).
+
+## 2026-10-27 — AdsPower: listagem de perfis no lugar do ID
+
+- **O quê:** some o botão Testar conexão e o campo de ID. Com a badge ok, a tela lista os perfis da API local (nº, nome, ID, grupo, conta, plataforma, proxy, observação, última abertura) e atualiza a cada 5s.
+- **Por quê:** o ID digitado era o passo extra; o AdsPower já tem os perfis.
+- **Não desfazer:** a badge continua testando só `/status`; o Facebook continua fora desta janela.
+
+## 2026-10-27 — AdsPower: menu com logo e probe no GitHub
+
+- **O quê:** o item lateral fica ícone + **AdsPower**. A badge testa a API local a cada 5s. **Testar conexão** abre `https://github.com/DGMidias/bm-farm-electron` só no Chromium do perfil (CDP).
+- **Por quê:** o mesmo padrão das outras integrações; o Facebook continua fora da janela Electron.
+- **Não desfazer:** o poll da badge não inicia o navegador; o farm start() não navega para o GitHub.
+
 ## 2026-10-27 — Caixas: copiar e-mail e Mensagens só pela listagem
 
 - **O quê:** cada linha tem copiar endereço e o botão **Mensagens** (no lugar de Abrir). A subaba Mensagens some do menu; só abre pela ação daquela caixa. O item lateral fica ícone + **Email (mail.tm)**.

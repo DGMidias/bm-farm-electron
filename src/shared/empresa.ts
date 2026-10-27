@@ -16,6 +16,7 @@ export interface EmpresaCard {
   autorizado_pela_empresa: boolean;
   documento_sem_alteracao_de_conteudo: boolean;
   adspower_profile: string;
+  ler_pdf_automatico: boolean;
 }
 
 export function emptyEmpresa(id = crypto.randomUUID()): EmpresaCard {
@@ -37,6 +38,7 @@ export function emptyEmpresa(id = crypto.randomUUID()): EmpresaCard {
     autorizado_pela_empresa: false,
     documento_sem_alteracao_de_conteudo: false,
     adspower_profile: "",
+    ler_pdf_automatico: true,
   };
 }
 

@@ -11,8 +11,10 @@ describe("store IPC local", () => {
     const store = new LocalStore({ root });
     const config = structuredClone(DEFAULT_CONFIG);
     config.sms.apiKey = "supersecreta123";
+    config.empresas = [{ id: "e1" } as never];
     store.writeConfig(config);
     expect(store.readConfig().sms.apiKey).toBe("supersecreta123");
+    expect(store.readConfig().empresas).toEqual([]);
     expect(store.redactForLog("supersecreta123")).not.toContain("supersecreta");
     store.appendHistory({
       id: "1",

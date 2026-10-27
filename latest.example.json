@@ -1,0 +1,12 @@
+{
+  "version": "0.2.0",
+  "notes": "Coloque este arquivo na release do GitHub com o nome latest.json.",
+  "win": {
+    "url": "https://github.com/DGMidias/bm-farm-electron/releases/download/v0.2.0/BM-Farm-Setup-0.2.0.exe",
+    "sha512": "SUBSTITUA_PELO_SHA512_DO_EXE"
+  },
+  "mac": {
+    "url": "https://github.com/DGMidias/bm-farm-electron/releases/download/v0.2.0/BM-Farm-0.2.0-mac.zip",
+    "sha512": "SUBSTITUA_PELO_SHA512_DO_ZIP"
+  }
+}

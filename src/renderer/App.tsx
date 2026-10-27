@@ -1,5 +1,6 @@
 import type { DesktopApi } from "../preload";
-import { DEFAULT_CONFIG, type AppConfig, type AppLog, type ConnectionResult, type EngineStatus, type HistoryEvent, type HumanPause, type MenuId, type SmsActivation, type SmsService, type UpdateCheckResult } from "@shared/types";
+import { settingsToSave } from "@shared/farm-draft";
+import { DEFAULT_CONFIG, type AdsPowerProfile, type AppConfig, type AppLog, type ConnectionResult, type EngineStatus, type HistoryEvent, type HumanPause, type MenuId, type SmsActivation, type SmsService, type UpdateCheckResult } from "@shared/types";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AdsPowerPage } from "./pages/AdsPowerPage";
 import { EmailPage } from "./pages/EmailPage";
@@ -8,13 +9,16 @@ import { HistoryPage } from "./pages/HistoryPage";
 import { SmsPage } from "./pages/SmsPage";
 import numeroVirtualLogo from "./assets/numero-virtual.png";
 import mailTmLogo from "./assets/mail-tm.svg";
+import adsPowerLogo from "./assets/adspower.svg";
+import farmLogo from "./assets/farm.svg";
+import historyLogo from "./assets/history.svg";
 
 const MENUS: Array<{ id: MenuId; label: string; icon?: string }> = [
   { id: "sms", label: "Número Virtual", icon: numeroVirtualLogo },
   { id: "email", label: "Email (mail.tm)", icon: mailTmLogo },
-  { id: "adspower", label: "3 · AdsPower" },
-  { id: "farm", label: "4 · Farm de BM" },
-  { id: "history", label: "5 · Histórico" },
+  { id: "adspower", label: "AdsPower", icon: adsPowerLogo },
+  { id: "farm", label: "Farm de BM", icon: farmLogo },
+  { id: "history", label: "Histórico", icon: historyLogo },
 ];
 
 function desktop(): DesktopApi | undefined {
@@ -30,6 +34,8 @@ export function App() {
   const [emailResult, setEmailResult] = useState<ConnectionResult>();
   const [emailAction, setEmailAction] = useState<ConnectionResult>();
   const [adsResult, setAdsResult] = useState<ConnectionResult>();
+  const [adsProfiles, setAdsProfiles] = useState<AdsPowerProfile[]>([]);
+  const [adsListError, setAdsListError] = useState<string>();
   const [smsServices, setSmsServices] = useState<SmsService[]>([]);
   const [smsActivation, setSmsActivation] = useState<SmsActivation>();
   const [busy, setBusy] = useState(false);
@@ -40,11 +46,16 @@ export function App() {
   const [logs, setLogs] = useState<AppLog[]>([]);
 
   useEffect(() => {
-    void desktop()?.getConfig().then(setConfig);
+    void desktop()?.getConfig().then((saved) => {
+      if (saved) setConfig({ ...saved, empresas: [] });
+    });
     void desktop()?.getHistory().then(setHistory);
     void desktop()?.engineStatus().then(setEngine);
     void desktop()?.platform().then((info) => setVersion(info.version));
     void desktop()?.listLogs().then((entries) => setLogs((entries as AppLog[]) ?? []));
+    void desktop()?.checkUpdate().then((result) => {
+      if (result) setUpdate(result);
+    });
     const offLog = desktop()?.onLog((entry) => setLogs((current) => [entry as AppLog, ...current].slice(0, 300)));
     const offPause = desktop()?.onPause((next) => setPause(next as HumanPause));
     return () => {
@@ -55,8 +66,17 @@ export function App() {
 
   const persist = async (next: AppConfig) => {
     setConfig(next);
-    const saved = await desktop()?.saveConfig(next);
-    if (saved) setConfig(saved);
+    const saved = await desktop()?.saveConfig(settingsToSave(next));
+    if (saved) setConfig({ ...saved, empresas: next.empresas });
+  };
+
+  const keepDraft = (next: AppConfig) => {
+    setConfig(next);
+  };
+
+  const applySaved = (saved: AppConfig | undefined) => {
+    if (!saved) return;
+    setConfig((current) => ({ ...saved, empresas: current.empresas }));
   };
 
   useEffect(() => {
@@ -92,6 +112,40 @@ export function App() {
   }, [menu]);
 
   useEffect(() => {
+    if (menu !== "adspower") return;
+    let stop = false;
+    const poll = async () => {
+      const result = await desktop()?.testAdsPower();
+      if (stop || !result) return;
+      setAdsResult(result);
+    };
+    void poll();
+    const timer = window.setInterval(() => void poll(), 5000);
+    return () => {
+      stop = true;
+      window.clearInterval(timer);
+    };
+  }, [menu, config.adspower.apiKey, config.adspower.baseUrl]);
+
+  useEffect(() => {
+    let stop = false;
+    const poll = async () => {
+      try {
+        const list = await desktop()?.listAdsPowerProfiles();
+        if (!stop) setAdsProfiles(list ?? []);
+      } catch {
+        if (!stop) setAdsProfiles([]);
+      }
+    };
+    void poll();
+    const timer = window.setInterval(() => void poll(), 5000);
+    return () => {
+      stop = true;
+      window.clearInterval(timer);
+    };
+  }, [config.adspower.apiKey, config.adspower.baseUrl]);
+
+  useEffect(() => {
     if (menu !== "sms" || !smsResult?.ok) return;
     let stop = false;
     void desktop()
@@ -111,7 +165,7 @@ export function App() {
     try {
       await desktop()?.listInboxes();
       const saved = await desktop()?.getConfig();
-      if (saved) setConfig(saved);
+      applySaved(saved);
     } catch (error) {
       setEmailAction({ ok: false, mensagem: error instanceof Error ? error.message : "Falha ao listar caixas." });
     }
@@ -121,9 +175,20 @@ export function App() {
     try {
       await desktop()?.listMail(address);
       const saved = await desktop()?.getConfig();
-      if (saved) setConfig(saved);
+      applySaved(saved);
     } catch (error) {
       setEmailAction({ ok: false, mensagem: error instanceof Error ? error.message : "Falha ao ler e-mail." });
+    }
+  }, []);
+
+  const refreshAdsProfiles = useCallback(async () => {
+    try {
+      const list = await desktop()?.listAdsPowerProfiles();
+      setAdsProfiles(list ?? []);
+      setAdsListError(undefined);
+    } catch (error) {
+      setAdsProfiles([]);
+      setAdsListError(error instanceof Error ? error.message : "Falha ao listar perfis do AdsPower.");
     }
   }, []);
 
@@ -131,7 +196,7 @@ export function App() {
     try {
       await desktop()?.listSmsNumbers();
       const saved = await desktop()?.getConfig();
-      if (saved) setConfig(saved);
+      applySaved(saved);
     } catch (error) {
       setSmsAction({ ok: false, mensagem: error instanceof Error ? error.message : "Falha ao listar números." });
     }
@@ -155,7 +220,7 @@ export function App() {
               const activation = await desktop()?.createSmsNumber();
               setSmsActivation(activation);
               const saved = await desktop()?.getConfig();
-              if (saved) setConfig(saved);
+              applySaved(saved);
               setSmsAction({
                 ok: true,
                 mensagem: activation ? `Número ${activation.phone}${activation.ddd ? ` · DDD ${activation.ddd}` : ""}` : "Número gerado.",
@@ -172,7 +237,7 @@ export function App() {
               const activation = await desktop()?.readSms(activationId);
               setSmsActivation(activation);
               const saved = await desktop()?.getConfig();
-              if (saved) setConfig(saved);
+              applySaved(saved);
               const last = [...(activation?.messages ?? [])].sort((a, b) => a.receivedAt.localeCompare(b.receivedAt)).at(-1);
               setSmsAction({
                 ok: true,
@@ -212,7 +277,7 @@ export function App() {
             try {
               const created = await desktop()?.createInbox();
               const saved = await desktop()?.getConfig();
-              if (saved) setConfig(saved);
+              applySaved(saved);
               setEmailAction({ ok: true, mensagem: created?.address ? `Caixa ${created.address}` : "Caixa gerada." });
             } catch (error) {
               setEmailAction({ ok: false, mensagem: error instanceof Error ? error.message : "Falha ao gerar e-mail." });
@@ -229,32 +294,11 @@ export function App() {
       return (
         <AdsPowerPage
           config={config}
-          result={adsResult}
-          engine={engine}
-          busy={busy}
+          live={adsResult}
+          profiles={adsProfiles}
+          listError={adsListError}
           onChange={(next) => void persist(next)}
-          onTest={async () => setAdsResult(await desktop()?.testAdsPower())}
-          onProbe={async () => {
-            setBusy(true);
-            try {
-              const status = await desktop()?.probeAdsPower();
-              if (status) setEngine(status);
-              setAdsResult({ ok: true, mensagem: status?.mensagem ?? "Navegador sob controle via CDP." });
-            } catch (error) {
-              setAdsResult({ ok: false, mensagem: error instanceof Error ? error.message : "Falha ao controlar o AdsPower." });
-            } finally {
-              setBusy(false);
-            }
-          }}
-          onStop={async () => {
-            setBusy(true);
-            try {
-              setEngine((await desktop()?.stopSession()) ?? { running: false, mensagem: "Motor ocioso." });
-              setAdsResult({ ok: true, mensagem: "Sessão AdsPower encerrada." });
-            } finally {
-              setBusy(false);
-            }
-          }}
+          onListProfiles={refreshAdsProfiles}
         />
       );
     }
@@ -263,10 +307,16 @@ export function App() {
       <FarmPage
         config={config}
         engine={engine}
-        onChange={(next) => void persist(next)}
-        onStart={async (id) => setEngine(await desktop()?.startSession(id))}
+        profiles={adsProfiles}
+        onChange={keepDraft}
+        onRemove={(id) => keepDraft({ ...config, empresas: config.empresas.filter((item) => item.id !== id) })}
+        onStart={async (id) => {
+          const card = config.empresas.find((item) => item.id === id);
+          setEngine(await desktop()?.startSession(id, card));
+        }}
         onFill={async (id, step) => {
-          await desktop()?.fillStep(id, step);
+          const card = config.empresas.find((item) => item.id === id);
+          await desktop()?.fillStep(id, step, card);
         }}
         onDetect={async () => {
           const detected = await desktop()?.detectScreen();
@@ -276,9 +326,18 @@ export function App() {
         onSaveSnapshot={async (name) => {
           await desktop()?.saveSnapshot(name);
         }}
+        onPickDocument={async (id) => {
+          const card = config.empresas.find((item) => item.id === id);
+          const picked = await desktop()?.pickEmpresaDocument(Boolean(card?.ler_pdf_automatico));
+          if (!picked) return;
+          keepDraft({
+            ...config,
+            empresas: config.empresas.map((item) => (item.id === id ? { ...item, documento_original: picked.path, ...picked.fields } : item)),
+          });
+        }}
       />
     );
-  }, [adsResult, busy, config, emailAction, emailResult, engine, history, logs, menu, openInbox, refreshInboxes, refreshSmsNumbers, smsAction, smsActivation, smsResult, smsServices]);
+  }, [adsListError, adsProfiles, adsResult, busy, config, emailAction, emailResult, engine, history, logs, menu, openInbox, refreshAdsProfiles, refreshInboxes, refreshSmsNumbers, smsAction, smsActivation, smsResult, smsServices]);
 
   return (
     <div className="app">
@@ -297,17 +356,14 @@ export function App() {
         </nav>
         <div className="card">
           <strong>Atualização</strong>
-          <p className="muted">{update?.mensagem ?? "Ainda não verificada."}</p>
-          <div className="row">
-            <button className="btn secondary" type="button" onClick={async () => setUpdate(await desktop()?.checkUpdate())}>
-              Verificar
-            </button>
-            {update?.newer ? (
+          <p className="muted">{update?.mensagem ?? "Checando atualização…"}</p>
+          {update?.newer ? (
+            <div className="row">
               <button className="btn" type="button" onClick={() => void desktop()?.applyUpdate()}>
                 Instalar
               </button>
-            ) : null}
-          </div>
+            </div>
+          ) : null}
         </div>
       </aside>
       <main className="workspace">{page}</main>

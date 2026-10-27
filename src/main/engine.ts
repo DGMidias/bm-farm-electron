@@ -40,7 +40,7 @@ export class FarmEngine extends EventEmitter {
     };
   }
 
-  async startProfile(config: AdsPowerConfig, profileId: string): Promise<EngineStatus> {
+  async startProfile(config: AdsPowerConfig, profileId: string, openUrl?: string): Promise<EngineStatus> {
     if (this.running) throw new Error("Já existe uma sessão. Encerre antes de abrir outra.");
     if (!profileId.trim()) throw new Error("Informe o perfil AdsPower (user_id ou serial).");
     const ws = await startProfile(config, profileId.trim());
@@ -49,6 +49,9 @@ export class FarmEngine extends EventEmitter {
     this.page = this.context.pages()[0] ?? (await this.context.newPage());
     this.profile = profileId.trim();
     this.running = true;
+    if (openUrl) {
+      await this.page.goto(openUrl, { waitUntil: "domcontentloaded" });
+    }
     const url = this.page.url();
     const title = await this.page.title();
     this.emit("status", this.status());

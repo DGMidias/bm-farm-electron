@@ -20,8 +20,10 @@ npm run test:harness
 
 1. SMS — API numero-virtual
 2. Email (mail.tm) — temporário, só validação
-3. AdsPower — API local + chave
-4. Farm de BM — cards no formato empresa.json + perfil
-5. Histórico — logs locais sem segredo
+3. AdsPower — logo no menu; badge testa a API local a cada 5s; com a conexão ok, lista os perfis do AdsPower
+4. Farm de BM — ícone no menu; PDF do comprovante CNPJ preenche o card
+5. Histórico — ícone no menu; logs locais sem segredo
+
+Atualização: ao abrir, o app compara `package.json` com `latest.json` em GitHub Releases (`win` = `.exe`, `mac` = `.zip`). Veja `latest.example.json`.
 
 O Facebook não abre nesta janela.
