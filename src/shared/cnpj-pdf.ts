@@ -126,6 +126,12 @@ export function parseCnpjComprovante(text: string): Partial<EmpresaCard> {
   const logradouro = afterFuzzy(text, ["logradouro", "togradouro"], ["numero", "complemento", "cep"]);
   const numero = streetNumber(afterFuzzy(text, ["logradouro", "togradouro"], ["cep", "bairro", "endereco eletr"]));
   const complemento = afterFuzzy(text, ["complemento"], ["cep", "bairro"]);
+  const bairro = afterFuzzy(text, ["bairro/distrito", "bairro", "enrrodistrito"], [
+    "municipio",
+    "moncifio",
+    "uf",
+    "endereco eletr",
+  ]);
   const cidade = afterFuzzy(text, ["municipio", "moncifio"], ["uf", "endereco eletr", "telefone"]);
   let estado = afterFuzzy(text, ["uf"], ["endereco eletr", "telefone"]).replace(/[^A-Za-z]/g, "").slice(0, 2).toUpperCase();
   if (!UF.test(estado)) estado = firstMatch(blob, UF);
@@ -134,9 +140,11 @@ export function parseCnpjComprovante(text: string): Partial<EmpresaCard> {
   if (razao) fields.razao_social = cleanLine(razao);
   if (cnpj) fields.cnpj = cnpj;
   if (endereco) fields.endereco = endereco;
+  const bairroLimpo = visibleValue(bairro);
   const complementoLimpo = visibleValue(complemento);
-  if (complementoLimpo && !/^(cep\b|\d{2}\.?\d{3}-?\d{3}$)/i.test(complementoLimpo)) {
-    fields.complemento = complementoLimpo;
+  const linha2 = bairroLimpo || complementoLimpo;
+  if (linha2 && !/^(cep\b|\d{2}\.?\d{3}-?\d{3}$)/i.test(linha2)) {
+    fields.complemento = linha2;
   }
   if (cidade) fields.cidade = cleanLine(cidade.replace(UF, "").trim());
   if (estado) fields.estado = estado;
@@ -205,13 +213,15 @@ export function parseCnpjFromOcr(words: OcrWord[]): Partial<EmpresaCard> {
   const numero = lineText(cellBelow(words, ["numero"])).replace(/[^\d]/g, "");
   const cep = lineText(cellBelow(words, ["cep"]));
   const complemento = visibleValue(lineText(cellBelow(words, ["complemento"])));
+  const bairro = visibleValue(lineText(cellBelow(words, ["bairro", "distrito"])));
   const cidade = lineText(cellBelow(words, ["municipio"]));
   const estado = lineText(cellBelow(words, ["uf"]));
   const email = lineText(cellBelow(words, ["eletronico", "eletrônico"]));
   const telefone = lineText(cellBelow(words, ["telefone"]));
   if (razao) fields.razao_social = cleanLine(razao);
   if (logradouro || numero) fields.endereco = joinAddress(logradouro, numero);
-  if (complemento) fields.complemento = complemento;
+  if (bairro) fields.complemento = bairro;
+  else if (complemento) fields.complemento = complemento;
   if (cidade) fields.cidade = cleanLine(cidade.replace(UF, "").trim());
   if (UF.test(estado)) fields.estado = estado.replace(/[^A-Za-z]/g, "").slice(0, 2).toUpperCase();
   if (/\d{2}\.\d{3}-\d{3}/.test(cep)) fields.cep = firstMatch(cep, /(\d{2}\.\d{3}-\d{3})/);

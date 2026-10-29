@@ -1,6 +1,16 @@
-import { ADSPOWER_PROBE_URL, isAdsPowerRateLimit, listAdsPowerProfiles, profileParams, resetAdsPowerProfileCache } from "../../src/main/adspower";
-import { formatAdsPowerOpen, formatAdsPowerProxy, formatAdsPowerStatus, mapAdsPowerActive, mapAdsPowerProfile } from "../../src/shared/adspower-view";
+import { ADSPOWER_PROBE_URL, adspowerRequest, isAdsPowerRateLimit, listAdsPowerProfiles, profileParams, resetAdsPowerProfileCache } from "../../src/main/adspower";
+import {
+  formatAdsPowerOpen,
+  formatAdsPowerProxy,
+  formatAdsPowerStatus,
+  mapAdsPowerActive,
+  mapAdsPowerProfile,
+  pickAdsPowerTabIndex,
+  shouldReuseAdsPowerTab,
+} from "../../src/shared/adspower-view";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+const adsConfig = { baseUrl: "http://127.0.0.1:50325", testProfile: "" };
 
 describe("AdsPower perfil", () => {
   afterEach(() => {
@@ -73,9 +83,26 @@ describe("AdsPower perfil", () => {
       }
       return jsonResponse({ code: -1, msg: "failed" });
     });
-    const list = await listAdsPowerProfiles({ baseUrl: "http://127.0.0.1:50325", apiKey: "k", testProfile: "" });
+    const list = await listAdsPowerProfiles(adsConfig);
     expect(list.map((item) => item.serial)).toEqual(["1", "2"]);
     expect(list[0]?.status).toBe("fechado");
+  });
+
+  it("não para no começo se 1-3 foram apagados e o primeiro serial é 4", async () => {
+    resetAdsPowerProfileCache();
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/v1/user/list")) {
+        return jsonResponse({ code: -1, msg: "This feature is only available in paid subscriptions." });
+      }
+      if (url.includes("serial_number=4") || url.includes("serial_number=5")) {
+        return jsonResponse({ code: 0, msg: "success", data: { status: url.includes("serial_number=4") ? "Active" : "Inactive" } });
+      }
+      return jsonResponse({ code: -1, msg: "Profile does not exist" });
+    });
+    const list = await listAdsPowerProfiles(adsConfig);
+    expect(list.map((item) => item.serial)).toEqual(["4", "5"]);
+    expect(list[0]?.status).toBe("aberto");
   });
 
   it("não some com a lista quando a API pede calma", async () => {
@@ -93,16 +120,36 @@ describe("AdsPower perfil", () => {
       }
       return jsonResponse({ code: -1, msg: "Too many request per second, please check" });
     });
-    const first = await listAdsPowerProfiles({ baseUrl: "http://127.0.0.1:50325", apiKey: "k", testProfile: "" });
+    const first = await listAdsPowerProfiles(adsConfig);
     const second = await Promise.all([
-      listAdsPowerProfiles({ baseUrl: "http://127.0.0.1:50325", apiKey: "k", testProfile: "" }),
-      listAdsPowerProfiles({ baseUrl: "http://127.0.0.1:50325", apiKey: "k", testProfile: "" }),
+      listAdsPowerProfiles(adsConfig),
+      listAdsPowerProfiles(adsConfig),
     ]);
     expect(first[0]?.userId).toBe("h1yynkm");
     expect(second[0][0]?.userId).toBe("h1yynkm");
     expect(second[1][0]?.userId).toBe("h1yynkm");
     expect(hits).toBe(1);
     expect(isAdsPowerRateLimit("Too many request per second, please check")).toBe(true);
+  });
+
+  it("não manda Authorization e explica se a API local ainda pede key", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ code: -1, msg: "Please check the API-key" }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(adspowerRequest(adsConfig, "/status")).rejects.toThrow(/desative a autenticação da API local/i);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
+    expect(init?.headers).toBeUndefined();
+  });
+
+  it("reusa a aba da Meta no mesmo perfil em vez de abrir outra", () => {
+    expect(pickAdsPowerTabIndex(["https://github.com/DGMidias/bm-farm-electron", "https://business.facebook.com/latest/home"])).toBe(1);
+    expect(pickAdsPowerTabIndex(["https://adsmanager.facebook.com/adsmanager/onboarding"])).toBe(0);
+    expect(pickAdsPowerTabIndex(["https://github.com/DGMidias/bm-farm-electron"])).toBe(0);
+    expect(pickAdsPowerTabIndex(["https://business.facebook.com/latest/home"], "https://github.com/DGMidias/bm-farm-electron")).toBe(-1);
+    expect(pickAdsPowerTabIndex([])).toBe(-1);
+    expect(shouldReuseAdsPowerTab({ running: true, profile: "5", target: "5" })).toBe(true);
+    expect(shouldReuseAdsPowerTab({ running: false, profile: "5", target: "5" })).toBe(false);
+    expect(shouldReuseAdsPowerTab({ running: true, profile: "4", target: "5" })).toBe(false);
   });
 });
 

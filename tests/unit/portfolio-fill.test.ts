@@ -1,5 +1,7 @@
 import { emptyEmpresa } from "@shared/empresa";
 import {
+  adsPolicyButtonNames,
+  clickAdsPolicy,
   clickContinueSession,
   clickCreateButton,
   clickSwitcherCreate,
@@ -7,6 +9,8 @@ import {
   farmLocatorTexts,
   fillPortfolioFields,
   clickPostCreateStep,
+  isAdsPolicyDialog,
+  isAdsPolicyThanks,
   isLoginChooser,
   isPortfolioCreateForm,
   openPortfolioModal,
@@ -25,10 +29,11 @@ function fakeScope(items: Array<string | { role: string; name: string }>, option
   const filled: Record<string, string> = {};
   const clicks: string[] = [];
   const names = items.map((item) => (typeof item === "string" ? item : item.name));
-  const present = (role: string | undefined, name: string) =>
+  const present = (role: string | undefined, name: string | RegExp) =>
     items.some((item) => {
-      if (typeof item === "string") return item === name;
-      return item.name === name && (!role || item.role === role);
+      if (typeof item === "string") return typeof name === "string" ? item === name : name.test(item);
+      if (role && item.role !== role) return false;
+      return typeof name === "string" ? item.name === name : name.test(item.name);
     });
   const fillable = (name: string): Fillable => ({
     count: async () => (names.includes(name) ? 1 : 0),
@@ -39,7 +44,7 @@ function fakeScope(items: Array<string | { role: string; name: string }>, option
   const clickable = (role: string, name?: string | RegExp): Clickable => ({
     count: async () => {
       if (name === undefined) return items.filter((item) => typeof item !== "string" && item.role === role).length;
-      return present(role, String(name)) ? 1 : 0;
+      return present(role, name) ? 1 : 0;
     },
     first: () => ({
       click: async () => {
@@ -48,15 +53,16 @@ function fakeScope(items: Array<string | { role: string; name: string }>, option
               const hit = items.find((item) => typeof item !== "string" && item.role === role);
               return hit && typeof hit !== "string" ? `${hit.role}:${hit.name}` : "";
             })()
+          : name instanceof RegExp
+            ? (() => {
+                const hit = items.find((item) => typeof item !== "string" && item.role === role && name.test(item.name));
+                return hit && typeof hit !== "string" ? hit.name : name.source;
+              })()
           : String(name);
         if (label && options.failNames?.includes(typeof name === "string" ? name : label.split(":").slice(1).join(":"))) {
           throw new Error("intercepts pointer events");
         }
-        if (name === undefined) {
-          clicks.push(label);
-          return;
-        }
-        clicks.push(String(name));
+        clicks.push(label);
       },
     }),
   });
@@ -154,6 +160,32 @@ describe("preenchimento do portfólio", () => {
     expect(scope.filled["Seu email comercial"]).toBe("foo@mail.tm");
     expect(scope.filled["Seu nome"]).toBeUndefined();
     expect(await clickCreateButton(scope)).toBe("Enviar");
+  });
+
+  it("reconhece o diálogo de não discriminação e clica Aceito, depois Concluir", async () => {
+    const policy = [
+      "Criar portfólio empresarial",
+      "Para ajudar a manter a integridade da publicidade da Meta, leia e aceite nossa política de não discriminação.",
+      "Política de Não Discriminação",
+      "Ao clicar em Aceito, você confirma que:",
+      "Aceito",
+    ];
+    const thanks = [
+      "Criar portfólio empresarial",
+      "Agradecemos a sua aceitação da nossa Política de Não Discriminação",
+      "Concluir",
+    ];
+    expect(isAdsPolicyDialog(policy)).toBe(true);
+    expect(isAdsPolicyThanks(thanks)).toBe(true);
+    expect(adsPolicyButtonNames(policy)).toEqual(["Aceito", "I Accept"]);
+    expect(adsPolicyButtonNames(thanks)).toEqual(["Concluir", "Done", "Finish"]);
+    expect(isAdsPolicyDialog(["Criar portfólio empresarial", "Começar"])).toBe(false);
+    const accept = fakeScope([{ role: "button", name: "Aceito" }, { role: "link", name: "Criar portfólio empresarial" }]);
+    expect(await clickAdsPolicy(accept, policy)).toBe("Aceito");
+    expect(accept.clicks).toEqual(["Aceito"]);
+    const done = fakeScope([{ role: "button", name: "Concluir" }]);
+    expect(await clickAdsPolicy(done, thanks)).toBe("Concluir");
+    expect(done.clicks).toEqual(["Concluir"]);
   });
 
   it("no chooser da Meta clica Continuar com o Facebook, sem tratar como logout", async () => {
@@ -255,16 +287,24 @@ describe("preenchimento do portfólio", () => {
     expect(scope.clicks).toEqual(["Começar"]);
   });
 
-  it("abre o seletor pelo combobox, nunca pelo nome do ativo", async () => {
-    const scope = fakeScope([
+  it("abre o seletor pelo combobox do chrome, nunca 2FA nem o nome do ativo", async () => {
+    const branded = fakeScope([
       { role: "button", name: "Bmnovaativa" },
       { role: "heading", name: "Bmnovaativa" },
-      { role: "combobox", name: "Outra Marca Qualquer, perfilx" },
+      { role: "combobox", name: "Ninguém" },
+      { role: "combobox", name: "Outra Marca Qualquer, Portfólio empresarial" },
       { role: "button", name: "Criar um portfólio empresarial" },
     ]);
-    expect(await openSwitcher(scope)).toBe(true);
-    expect(scope.clicks).toEqual(["combobox:Outra Marca Qualquer, perfilx"]);
-    expect(scope.clicks.join(" ")).not.toMatch(/Bmnovaativa/i);
+    expect(await openSwitcher(branded)).toBe(true);
+    expect(branded.clicks).toEqual(["Outra Marca Qualquer, Portfólio empresarial"]);
+    expect(branded.clicks.join(" ")).not.toMatch(/Ninguém|Bmnovaativa/i);
+    const home = fakeScope([
+      { role: "combobox", name: "Ninguém" },
+      { role: "combobox", name: "William Rodrigues Santos Vendas Ltda" },
+    ]);
+    expect(await openSwitcher(home)).toBe(true);
+    expect(home.clicks).toEqual(["William Rodrigues Santos Vendas Ltda"]);
+    expect(home.clicks.join(" ")).not.toMatch(/Ninguém/i);
     expect(farmLocatorTexts().join("\n")).not.toMatch(PROFILE_SPECIFIC_FORBIDDEN);
   });
 

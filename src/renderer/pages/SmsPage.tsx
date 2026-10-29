@@ -3,6 +3,7 @@ import { BR_DDDS, DEFAULT_DDD } from "@shared/ddd";
 import type { AppConfig, ConnectionResult, SmsActivation, SmsService } from "@shared/types";
 import { useEffect, useState } from "react";
 import {
+  activationOwnerLabel,
   activationStatusLabel,
   canCancelActivation,
   defaultSmsOption,
@@ -228,6 +229,7 @@ export function SmsPage({
                   <tr>
                     <th>Opção</th>
                     <th>Serviço</th>
+                    <th>Empresa / perfil AdsPower</th>
                     <th>Número</th>
                     <th>Código SMS</th>
                     <th>Status</th>
@@ -248,6 +250,7 @@ export function SmsPage({
                           <span className="option-index">{item.optionLabel || String(index + 1)}</span>
                         </td>
                         <td>{item.serviceName || "—"}</td>
+                        <td>{activationOwnerLabel(item)}</td>
                         <td>
                           <div className="phone-cell">
                             <CopyButton label="Copiar número completo" value={item.phone} />

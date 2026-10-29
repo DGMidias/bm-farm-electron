@@ -3,6 +3,7 @@ import { businessIdFromUrl } from "./farm-log";
 export type FarmEtapaId =
   | "portfolio"
   | "empresa"
+  | "email_confirm"
   | "whatsapp"
   | "verificacao_dados"
   | "verificacao_documento"
@@ -57,6 +58,10 @@ export const LANDING_TRIGGERS = [
   { role: "button", names: ["Começar", "Get started"] },
 ];
 
+/** Diálogo de política de anúncios no onboarding (perfil novo). Papel button, sem nome de empresa. */
+export const ADS_POLICY_ACCEPT = ["Aceito", "I Accept"] as const;
+export const ADS_POLICY_DONE = ["Concluir", "Done", "Finish"] as const;
+
 export const FARM_ETAPAS: FarmEtapa[] = [
   {
     id: "portfolio",
@@ -68,9 +73,15 @@ export const FARM_ETAPAS: FarmEtapa[] = [
   {
     id: "empresa",
     titulo: "Informações da empresa",
-    resumo: "Endereço, telefone, site e CNPJ como identificação fiscal.",
-    status: "pending",
+    resumo: "Endereço, número virtual, site e CNPJ como identificação fiscal.",
+    status: "ready",
     url: "https://business.facebook.com/latest/settings/business_info",
+  },
+  {
+    id: "email_confirm",
+    titulo: "Confirmar e-mail",
+    resumo: "Lê o link na caixa Gmail/Outlook/Hotmail da empresa e confirma no Chromium do AdsPower.",
+    status: "ready",
   },
   {
     id: "whatsapp",
@@ -121,11 +132,20 @@ export const FARM_ETAPAS: FarmEtapa[] = [
 /** Etapa já feita no perfil: logar e pular. Sem recriar, sem pausar como erro. */
 export const SKIP_COMPLETED_ETAPA = true;
 
-/** Etapa 1 sempre mina caixa mail.tm nova. Nunca o e-mail do PDF/CNPJ — a verificação da Meta cai nessa caixa. */
+/** Etapa 3: espera o e-mail da Meta na mesma caixa, sem gerar outra. */
+export const EMAIL_CONFIRM_EMPTY_POLLS = 20;
+export const EMAIL_CONFIRM_POLL_MS = 5000;
+
+/** Etapa 1 sempre mina caixa 22.do nova. Nunca o e-mail do PDF/CNPJ — a verificação da Meta cai nessa caixa. */
 export function shouldGeneratePortfolioInbox(_card?: {
   email_comercial?: string;
   usar_email_temporario?: boolean;
 }): boolean {
+  return true;
+}
+
+/** Etapa 2 sempre gera número virtual novo. Nunca o telefone do PDF/CNPJ. */
+export function shouldGenerateEmpresaPhone(_card?: { telefone?: string }): boolean {
   return true;
 }
 
@@ -181,6 +201,75 @@ export function etapaHref(etapa: Pick<FarmEtapa, "url">, businessId?: string): s
   return withBusinessId(etapa.url, businessId);
 }
 
+/** Id persistido no card ganha da sessão — outro BM no perfil não pode vazar. */
+export function businessIdForEmpresa(input: { sessionId?: string; storedId?: string }): string | undefined {
+  const stored = input.storedId?.trim();
+  if (stored) return stored;
+  const session = input.sessionId?.trim();
+  return session || undefined;
+}
+
+export function currentSettingsPortfolio(texts: string[]): string | undefined {
+  const index = texts.findIndex((line) => /identificação do portfólio empresarial|business portfolio id/i.test(line));
+  if (index <= 0) return undefined;
+  const name = texts[index - 1]?.trim();
+  if (!name || /^(editar|edit|informações do portfólio|business portfolio info)/i.test(name)) return undefined;
+  return name;
+}
+
+export function empresaPageMatchesCard(texts: string[], razaoSocial: string): boolean {
+  const current = currentSettingsPortfolio(texts);
+  if (!current) return false;
+  return portfolioListed([current], razaoSocial);
+}
+
+export function portfolioIsCurrent(input: {
+  url: string;
+  texts?: string[];
+  razaoSocial?: string;
+  storedId?: string;
+}): boolean {
+  if (input.texts?.length && input.razaoSocial) {
+    if (currentSettingsPortfolio(input.texts)) {
+      return empresaPageMatchesCard(input.texts, input.razaoSocial);
+    }
+    return portfolioListed(input.texts, input.razaoSocial);
+  }
+  const urlId = businessIdFromUrl(input.url);
+  const stored = input.storedId?.trim();
+  if (urlId && stored && urlId === stored) return true;
+  return false;
+}
+
+export type PortfolioListedAction = "skip" | "goto" | "pause" | "create";
+
+export function portfolioListedAction(input: {
+  listed: boolean;
+  current: boolean;
+  storedId?: string;
+}): PortfolioListedAction {
+  if (!input.listed) return "create";
+  if (input.current) return "skip";
+  if (input.storedId?.trim()) return "goto";
+  return "pause";
+}
+
+/** Só pula se o chrome já é o BM do card. storedId sozinho não navega — o seletor confirma a razão. */
+export function portfolioResumeAction(input: {
+  current: boolean;
+  storedId?: string;
+  chromeMismatch?: boolean;
+}): "skip" | "goto" | undefined {
+  if (input.chromeMismatch) return undefined;
+  if (input.current) return "skip";
+  return undefined;
+}
+
+export function empresaChromeBlocksEdit(texts: string[], razaoSocial: string): boolean {
+  if (!currentSettingsPortfolio(texts)) return false;
+  return !empresaPageMatchesCard(texts, razaoSocial);
+}
+
 export function isDuplicatePortfolioError(texts: string[]): boolean {
   const blob = texts.join(" ");
   return (
@@ -196,9 +285,54 @@ export function portfolioEtapaConcluida(input: {
   url: string;
   listedNames?: string[];
   razaoSocial?: string;
+  texts?: string[];
+  storedId?: string;
 }): boolean {
   if (!input.razaoSocial || !input.listedNames) return false;
-  return portfolioListed(input.listedNames, input.razaoSocial);
+  if (!portfolioListed(input.listedNames, input.razaoSocial)) return false;
+  return portfolioIsCurrent({
+    url: input.url,
+    texts: input.texts,
+    razaoSocial: input.razaoSocial,
+    storedId: input.storedId,
+  });
+}
+
+/** Heading/toolbar entram no chrome — innerText da settings recém-aberta costuma vir vazio. */
+export function mergePortfolioChrome(texts: string[], extra: string[] = []): string[] {
+  const lines: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of [...texts, ...extra]) {
+    for (const part of raw.split(/\n+/)) {
+      const line = part.trim();
+      if (!line) continue;
+      const key = normalizePortfolioName(line);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      lines.push(line);
+    }
+  }
+  return lines;
+}
+
+/** Depois de Confirmar, a Meta já está no /latest/ — não abre o seletor. */
+export function portfolioNeedsSwitcher(input: { submitted: boolean; confirmed: boolean; url: string }): boolean {
+  if (input.confirmed) return false;
+  if (input.submitted && /\/latest\//i.test(input.url) && businessIdFromUrl(input.url)) return false;
+  return true;
+}
+
+/** Depois de criar, /latest/ com business_id e a razão no chrome fecham a etapa 1 sem o seletor. */
+export function portfolioConfirmedOnSettings(input: {
+  url: string;
+  texts: string[];
+  razaoSocial: string;
+  submitted?: boolean;
+}): boolean {
+  if (!input.submitted) return false;
+  if (!businessIdFromUrl(input.url)) return false;
+  if (!/\/latest\//i.test(input.url)) return false;
+  return portfolioListed(input.texts, input.razaoSocial);
 }
 
 export function executableEtapas(): FarmEtapa[] {

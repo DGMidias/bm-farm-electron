@@ -19,6 +19,7 @@ const api = {
   listAdsPowerProfiles: () => ipcRenderer.invoke("adspower:profiles"),
   probeAdsPower: () => ipcRenderer.invoke("adspower:probe"),
   createInbox: () => ipcRenderer.invoke("email:create"),
+  deleteInbox: (address: string) => ipcRenderer.invoke("email:delete", address),
   listInboxes: () => ipcRenderer.invoke("email:list-inboxes"),
   listMail: (address?: string) => ipcRenderer.invoke("email:list", address),
   listLogs: () => ipcRenderer.invoke("log:list"),

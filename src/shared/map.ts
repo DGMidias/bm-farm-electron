@@ -1,3 +1,4 @@
+import { isEmpresaDetailsForm } from "./empresa-fill";
 import { isPortfolioCreateForm } from "./portfolio-fill";
 import type { ScreenSnapshot } from "./types";
 
@@ -21,6 +22,8 @@ export interface PageMap {
 
 export function scoreNode(node: MapNode, snapshot: ScreenSnapshot): number {
   if (node.id === "login" && isPortfolioCreateForm(snapshot.texts)) return 0;
+  if (node.id === "empresa.info" && isEmpresaDetailsForm(snapshot.texts)) return 0;
+  if (node.id === "empresa.details_form" && !isEmpresaDetailsForm(snapshot.texts)) return 0;
   if (node.id === "unknown") return 1;
   const url = snapshot.url.toLowerCase();
   const blob = `${snapshot.title} ${snapshot.texts.join(" ")}`.toLowerCase();

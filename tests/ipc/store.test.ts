@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { joinPath } from "@harness/compat";
 import { DEFAULT_CONFIG } from "@shared/types";
@@ -31,5 +31,18 @@ describe("store IPC local", () => {
       mensagem: "ok",
     });
     expect(store.readHistory()).toHaveLength(1);
+  });
+
+  it("descarta API key antiga do AdsPower", () => {
+    const root = mkdtempSync(joinPath(tmpdir(), "bm-store-"));
+    const store = new LocalStore({ root });
+    writeFileSync(
+      joinPath(root, "config.json"),
+      JSON.stringify({
+        ...DEFAULT_CONFIG,
+        adspower: { ...DEFAULT_CONFIG.adspower, apiKey: "rotativa-velha" },
+      }),
+    );
+    expect(store.readConfig().adspower).not.toHaveProperty("apiKey");
   });
 });

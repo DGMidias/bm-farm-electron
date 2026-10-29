@@ -1,16 +1,27 @@
 import {
+  businessIdForEmpresa,
   businessUsersSettingsUrl,
   clampBatchSize,
+  EMAIL_CONFIRM_EMPTY_POLLS,
+  EMAIL_CONFIRM_POLL_MS,
+  empresaChromeBlocksEdit,
   executableEtapas,
   etapaHref,
   FARM_ETAPAS,
   isDuplicatePortfolioError,
   isSuiteUnavailable,
   normalizePortfolioName,
+  mergePortfolioChrome,
+  portfolioConfirmedOnSettings,
   portfolioEtapaConcluida,
+  portfolioNeedsSwitcher,
+  portfolioIsCurrent,
   portfolioListed,
+  portfolioListedAction,
+  portfolioResumeAction,
   PORTFOLIO_FIELDS,
   PORTFOLIO_URL,
+  shouldGenerateEmpresaPhone,
   shouldGeneratePortfolioInbox,
   shouldRedirectToBusinessUsers,
   SKIP_COMPLETED_ETAPA,
@@ -25,10 +36,11 @@ const EXISTING =
 const SWITCHER = ["Debra R. Rocha", "Emerson Market", "O2M", "Top Sun Service"];
 
 describe("etapas do farm", () => {
-  it("declara o pipeline completo e só o portfólio executável", () => {
+  it("declara o pipeline completo e executa portfólio e informações da empresa", () => {
     expect(FARM_ETAPAS.map((item) => item.id)).toEqual([
       "portfolio",
       "empresa",
+      "email_confirm",
       "whatsapp",
       "verificacao_dados",
       "verificacao_documento",
@@ -38,8 +50,10 @@ describe("etapas do farm", () => {
       "verificacao_contato",
     ]);
     expect(FARM_ETAPAS[0]?.status).toBe("ready");
+    expect(FARM_ETAPAS[1]?.status).toBe("ready");
+    expect(FARM_ETAPAS[2]?.status).toBe("ready");
     expect(FARM_ETAPAS[0]?.url).toBe(PORTFOLIO_URL);
-    expect(executableEtapas()).toEqual([FARM_ETAPAS[0]]);
+    expect(executableEtapas().map((item) => item.id)).toEqual(["portfolio", "empresa", "email_confirm"]);
     expect(PORTFOLIO_FIELDS).toHaveLength(4);
     expect(PORTFOLIO_FIELDS.map((item) => item.key)).toEqual(["razao_social", "nome", "sobrenome", "email_comercial"]);
     expect(clampBatchSize(0, 4)).toBe(1);
@@ -88,6 +102,14 @@ describe("etapas do farm", () => {
         listedNames: [...SWITCHER, "Vesol Energia Solar Ltda"],
         razaoSocial: "Vesol Energia Solar Ltda",
       }),
+    ).toBe(false);
+    expect(
+      portfolioEtapaConcluida({
+        url: EXISTING,
+        listedNames: [...SWITCHER, "Vesol Energia Solar Ltda"],
+        razaoSocial: "Vesol Energia Solar Ltda",
+        storedId: "1393146169269525",
+      }),
     ).toBe(true);
     const log = formatEtapaSkippedLog({
       etapa: "portfolio",
@@ -98,10 +120,16 @@ describe("etapas do farm", () => {
     expect(log).not.toMatch(/desconhecida|erro/i);
   });
 
-  it("etapa 1 sempre gera caixa mail.tm nova, mesmo com e-mail do card ou checkbox desligado", () => {
+  it("etapa 1 sempre gera caixa 22.do nova, mesmo com e-mail do card ou checkbox desligado", () => {
     expect(shouldGeneratePortfolioInbox({ email_comercial: "rafaela@vesol.com.br", usar_email_temporario: false })).toBe(true);
     expect(shouldGeneratePortfolioInbox({ email_comercial: "foo@mail.tm", usar_email_temporario: true })).toBe(true);
     expect(shouldGeneratePortfolioInbox({ email_comercial: "", usar_email_temporario: false })).toBe(true);
+    expect(shouldGenerateEmpresaPhone({ telefone: "(47) 3204-3799" })).toBe(true);
+    expect(shouldGenerateEmpresaPhone({ telefone: "" })).toBe(true);
+    expect(FARM_ETAPAS.find((item) => item.id === "empresa")?.resumo).toMatch(/número virtual/i);
+    expect(FARM_ETAPAS.find((item) => item.id === "email_confirm")?.resumo).toMatch(/Gmail\/Outlook\/Hotmail/i);
+    expect(EMAIL_CONFIRM_EMPTY_POLLS).toBe(20);
+    expect(EMAIL_CONFIRM_POLL_MS).toBe(5000);
   });
 
   it("depois de criar, a suite vazia com business_id vai para pessoas do portfólio — sem pedir seletor", () => {
@@ -133,6 +161,185 @@ describe("etapas do farm", () => {
     expect(etapaHref(FARM_ETAPAS.find((item) => item.id === "empresa")!, "1618424756678450")).toContain("business_info");
     expect(etapaHref(FARM_ETAPAS.find((item) => item.id === "empresa")!)).toBe(
       "https://business.facebook.com/latest/settings/business_info",
+    );
+    expect(
+      businessIdForEmpresa({ sessionId: "1618424756678450", storedId: "1629787285455853" }),
+    ).toBe("1629787285455853");
+    expect(businessIdForEmpresa({ storedId: "1629787285455853" })).toBe("1629787285455853");
+    expect(businessIdForEmpresa({ sessionId: "1618424756678450" })).toBe("1618424756678450");
+    expect(businessIdForEmpresa({ sessionId: "  ", storedId: "" })).toBeUndefined();
+    const users =
+      "https://business.facebook.com/latest/settings/business_users/?nav_ref=bm_settings_redirect_migration&bm_redirect_migration=true&business_id=958933373548004";
+    expect(
+      portfolioConfirmedOnSettings({
+        url: users,
+        texts: ["Configurações", "Tek Energy Ltda", "Portfólio empresarial", "Pessoas"],
+        razaoSocial: "Tek Energy Ltda",
+        submitted: true,
+      }),
+    ).toBe(true);
+    expect(
+      portfolioConfirmedOnSettings({
+        url: users,
+        texts: ["Configurações", "Tek Energy Ltda", "Pessoas"],
+        razaoSocial: "Tek Energy Ltda",
+        submitted: false,
+      }),
+    ).toBe(false);
+    expect(
+      portfolioConfirmedOnSettings({
+        url: users,
+        texts: ["Configurações", "Pba Contabilidade Ltda", "Pessoas"],
+        razaoSocial: "Tek Energy Ltda",
+        submitted: true,
+      }),
+    ).toBe(false);
+    expect(
+      portfolioConfirmedOnSettings({
+        url: "https://business.facebook.com/latest/settings/business_info?business_id=1013153098495280",
+        texts: [
+          "Vesol Energia Solar Ltda",
+          "Identificação do portfólio empresarial: 1013153098495280",
+          "Detalhes da empresa",
+        ],
+        razaoSocial: "Vesol Energia Solar Ltda",
+        submitted: true,
+      }),
+    ).toBe(true);
+    expect(
+      portfolioConfirmedOnSettings({
+        url: "https://business.facebook.com/latest/business_home?business_id=1013153098495280",
+        texts: ["Vesol Energia Solar Ltda", "Portfólio empresarial"],
+        razaoSocial: "Vesol Energia Solar Ltda",
+        submitted: true,
+      }),
+    ).toBe(true);
+    const pbaSettings = "https://business.facebook.com/latest/settings/business_info?business_id=1144460734714607";
+    const pbaSparse = ["Meta Business Suite", "Links", "Gerenciador de Anúncios", "Configurações", "Ajuda"];
+    expect(
+      portfolioConfirmedOnSettings({
+        url: pbaSettings,
+        texts: pbaSparse,
+        razaoSocial: "Pba Contabilidade Ltda",
+        submitted: true,
+      }),
+    ).toBe(false);
+    expect(
+      portfolioConfirmedOnSettings({
+        url: pbaSettings,
+        texts: mergePortfolioChrome(pbaSparse, ["Pba Contabilidade Ltda\nPortfólio empresarial", "Pba Contabilidade Ltda"]),
+        razaoSocial: "Pba Contabilidade Ltda",
+        submitted: true,
+      }),
+    ).toBe(true);
+    expect(portfolioNeedsSwitcher({ submitted: true, confirmed: false, url: pbaSettings })).toBe(false);
+    expect(portfolioNeedsSwitcher({ submitted: false, confirmed: false, url: pbaSettings })).toBe(true);
+    expect(
+      portfolioNeedsSwitcher({
+        submitted: true,
+        confirmed: false,
+        url: "https://business.facebook.com/latest/business_home?business_id=1473072758342397",
+      }),
+    ).toBe(false);
+  });
+
+  it("razão na lista do seletor não é o BM aberto — Vesol no chrome, card Solfacil", () => {
+    const vesolUrl = "https://business.facebook.com/latest/settings/business_info?business_id=16184247566784500";
+    const solfacilId = "39710179128628335";
+    const print = [
+      "Vesol Energia Solar Ltda",
+      "Identificação do portfólio empresarial: 16184247566784500",
+      "Informações do portfólio empresarial",
+      "Detalhes da empresa",
+      "Razão social da empresa",
+      "Solfacil Energia Solar Tecnologia e Servicos Financeiros Ltda",
+      "Endereço",
+      "R Carderoverde, 24550",
+    ];
+    const listed = [...SWITCHER, "Solfacil Energia Solar Tecnologia e Servicos Financeiros Ltda", "Vesol Energia Solar Ltda"];
+    expect(
+      portfolioIsCurrent({
+        url: vesolUrl,
+        texts: print,
+        razaoSocial: "Solfacil Energia Solar Tecnologia e Servicos Financeiros Ltda",
+        storedId: solfacilId,
+      }),
+    ).toBe(false);
+    expect(
+      portfolioIsCurrent({
+        url: `https://business.facebook.com/latest/settings/business_info?business_id=${solfacilId}`,
+        razaoSocial: "Solfacil Energia Solar Tecnologia e Servicos Financeiros Ltda",
+        storedId: solfacilId,
+      }),
+    ).toBe(true);
+    expect(
+      portfolioIsCurrent({
+        url: vesolUrl,
+        texts: ["Solfacil Energia Solar Tecnologia e Servicos Financeiros Ltda", "Identificação do portfólio empresarial: 39710179128628335"],
+        razaoSocial: "Solfacil Energia Solar Tecnologia e Servicos Financeiros Ltda",
+      }),
+    ).toBe(true);
+    expect(
+      portfolioEtapaConcluida({
+        url: vesolUrl,
+        listedNames: listed,
+        razaoSocial: "Solfacil Energia Solar Tecnologia e Servicos Financeiros Ltda",
+        texts: print,
+        storedId: solfacilId,
+      }),
+    ).toBe(false);
+    expect(portfolioListedAction({ listed: true, current: false, storedId: solfacilId })).toBe("goto");
+    expect(portfolioListedAction({ listed: true, current: false })).toBe("pause");
+    expect(portfolioListedAction({ listed: true, current: true, storedId: solfacilId })).toBe("skip");
+    expect(portfolioListedAction({ listed: false, current: false })).toBe("create");
+    expect(portfolioResumeAction({ current: false, storedId: "1013153098495280" })).toBeUndefined();
+    expect(portfolioResumeAction({ current: true, storedId: "1013153098495280" })).toBe("skip");
+    expect(portfolioResumeAction({ current: true })).toBe("skip");
+    expect(portfolioResumeAction({ current: false })).toBeUndefined();
+    expect(portfolioResumeAction({ current: true, storedId: "1013153098495280", chromeMismatch: true })).toBeUndefined();
+    expect(portfolioResumeAction({ current: false, storedId: "1013153098495280", chromeMismatch: true })).toBeUndefined();
+    expect(
+      portfolioIsCurrent({
+        url: "https://business.facebook.com/latest/settings/business_info?business_id=1013153098495280",
+        texts: [
+          "Vesol Energia Solar Ltda",
+          "Identificação do portfólio empresarial: 1013153098495280",
+          "Detalhes da empresa",
+        ],
+        razaoSocial: "Pba Contabilidade Ltda",
+        storedId: "1013153098495280",
+      }),
+    ).toBe(false);
+    expect(
+      portfolioIsCurrent({
+        url: "https://business.facebook.com/latest/business_home?nav_ref=bm_home_redirect&bm_redirect_migration=true&business_id=1013153098495280",
+        texts: ["Boa noite, William", "Vesol Energia Solar Ltda", "Portfólio empresarial", "Criar um anúncio"],
+        razaoSocial: "Pba Contabilidade Ltda",
+        storedId: "1013153098495280",
+      }),
+    ).toBe(false);
+    expect(
+      portfolioResumeAction({
+        current: portfolioIsCurrent({
+          url: "https://business.facebook.com/latest/business_home?business_id=1013153098495280",
+          texts: ["Boa noite, William", "Vesol Energia Solar Ltda", "Portfólio empresarial"],
+          razaoSocial: "Pba Contabilidade Ltda",
+          storedId: "1013153098495280",
+        }),
+        storedId: "1013153098495280",
+      }),
+    ).toBeUndefined();
+    expect(
+      portfolioIsCurrent({
+        url: "https://business.facebook.com/latest/business_home?business_id=1473072758342397",
+        razaoSocial: "Vesol Energia Solar Ltda",
+        storedId: "1013153098495280",
+      }),
+    ).toBe(false);
+    expect(empresaChromeBlocksEdit(print, "Solfacil Energia Solar Tecnologia e Servicos Financeiros Ltda")).toBe(true);
+    expect(empresaChromeBlocksEdit(print, "Vesol Energia Solar Ltda")).toBe(false);
+    expect(empresaChromeBlocksEdit(["Detalhes da empresa", "Editar"], "Solfacil Energia Solar Tecnologia e Servicos Financeiros Ltda")).toBe(
+      false,
     );
   });
 });

@@ -5,7 +5,6 @@ function readyCard(id: string, profile = id): ReturnType<typeof emptyEmpresa> {
   const card = emptyEmpresa(id);
   card.razao_social = "Vesol Energia Solar Ltda";
   card.cnpj = "51.449.498/0001-05";
-  card.responsavel = "Rafaela Vesol";
   card.email_comercial = "rafaela@vesol.com.br";
   card.endereco = "R Jose Theodoro Ribeiro, 2723";
   card.cidade = "Jaragua do Sul";
@@ -33,17 +32,16 @@ describe("validação para iniciar o farm", () => {
     expect(errors.join(" ")).toMatch(/site/i);
     card.razao_social = "X";
     card.cnpj = "51.449.498/0001-05";
-    card.responsavel = "A";
     card.endereco = "Rua 1";
     card.cidade = "Joinville";
     card.estado = "SC";
     card.cep = "89201000";
-    card.telefone = "47999887766";
     card.site = "https://exemplo.com";
     card.adspower_profile = "2";
     card.documento_original = "C:/tmp/cnpj.pdf";
     card.autorizado_pela_empresa = true;
     card.documento_sem_alteracao_de_conteudo = true;
+    expect(card.telefone).toBe("");
     expect(validateEmpresa(card)).toEqual([]);
     expect(validateFarmStart([card], ["2"])).toEqual([]);
   });

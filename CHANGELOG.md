@@ -2,6 +2,180 @@
 
 Formato: data · o que mudou · por que · o que não desfazer.
 
+## 2026-10-29 — Depois de Confirmar, etapa 1 fecha sem seletor
+
+- **O quê:** após o assistente, a etapa 1 espera `/latest/settings/` e lê a razão no heading/toolbar. Não abre o seletor. InnerText vazio na settings recém-aberta não conta como “não criou”.
+- **Por quê:** a Pba já estava em `business_info?business_id=1144460734714607` e o farm pedia o seletor.
+- **Não desfazer:** locators genéricos. Sem clicar a razão. Confirmar ainda é o fim do assistente.
+
+## 2026-10-28 — Pba não é Vesol; uma aba só
+
+- **O quê:** `business_id` só herda se razão e CNPJ do card forem os mesmos. Chrome de outro BM (Vesol) não pula a etapa 1 nem abre esse id. Home `business_id=` igual ao stored **não** conta se a razão não está na página. Seletor confirma a razão; senão cria e descarta o id vazado. As etapas 1–3 reusam a mesma aba do AdsPower.
+- **Por quê:** a Pba reusou o UUID da Vesol e herdou `1013153098495280`. O farm pulou a criação, abriu a Vesol e ainda criava aba nova a cada etapa.
+- **Não desfazer:** storedId sozinho não navega, nem na home. Sem clicar a razão. Probe do AdsPower ainda pode abrir aba se o perfil estiver vazio.
+
+## 2026-10-28 — Etapa 3: Confirmação pendente no chrome
+
+- **O quê:** a etapa 3 abre `business_info` e lê o aviso **Confirmação pendente**. Sem o aviso, pula. Com o aviso, abre o checkpoint na caixa e volta na settings. Sem pausa pedindo para o usuário confirmar o e-mail.
+- **Por quê:** o farm já tinha confirmado, mas pedia ação humana. O chrome da empresa (Email + Editar, sem badge) é o sinal de pronto.
+- **Não desfazer:** login e CAPTCHA ainda pausam. Sem abrir PNG. Sem "confirme o e-mail no AdsPower".
+
+## 2026-10-28 — Link de e-mail: checkpoint, não o PNG
+
+- **O quê:** o extrator ignora `/images/`, `.png` e pixel de abertura. Vale `confirmemail.php` e `business.facebook.com/verify/email/checkpoint`. Sem fallback para qualquer URL da Meta.
+- **Por quê:** o HTML da Meta começa com `facebook.com/images/email/meta_icon.png` — o `/email/` no path fazia o farm abrir o ícone.
+- **Não desfazer:** sem abrir imagem. Sem facebook.com no Electron; o AdsPower é quem abre o link.
+
+## 2026-10-28 — Etapa 1 vai ao business_id do card
+
+- **O quê:** se o card já tem `business_id` e o chrome é outro BM (home do William), o farm abre esse id — sem seletor. Se já estiver nele, pula a etapa 1. O seletor aceita o combobox do BM aberto e continua ignorando **Ninguém** (2FA).
+- **Por quê:** a Vesol (`1013153098495280`) já existia, mas o farm ficava no `147307…` e não ia para a etapa 2.
+- **Não desfazer:** storedId ganha. Sem clicar a razão social. Sem 2FA.
+
+## 2026-10-28 — Não clicar no select de 2FA
+
+- **O quê:** o seletor só abre combobox cujo nome tem "portfólio empresarial". País só o combobox **País**. Depois de criar, `/latest/` com `business_id` e a razão no chrome fecha a etapa 1 sem seletor — inclusive `business_info`.
+- **Por quê:** na settings o único combobox é **Ninguém** (2FA). O farm clicava nele e pausava pedindo o seletor, em vez de ir para o fill da empresa.
+- **Não desfazer:** sem clicar combobox sem nome. Sem locator pela razão social.
+
+## 2026-10-28 — Etapa 1: Aceito na política de anúncios
+
+- **O quê:** no onboarding de perfil vazio, se a Meta abrir a política de não discriminação, o farm clica **Aceito** e depois **Concluir** (papéis button). Só então tenta Criar portfólio.
+- **Por quê:** o diálogo tapa o formulário; o farm ficava clicando Criar portfólio e a landing redirecionava sem `business_id`.
+- **Não desfazer:** locators genéricos (Aceito / I Accept / Concluir). Sem clicar nome de empresa. Sem bypass de login/CAPTCHA/OTP.
+
+## 2026-10-28 — AdsPower: acha serial mesmo se 1-3 não existem
+
+- **O quê:** `/user/list` pago continua caindo no scan local, mas miss no começo (perfis 1-3 apagados) não aborta. Acha 4 e 5. Também sonda o serial dos cards. "Profile does not exist" deixa de lotar o log.
+- **Por quê:** a API local está ok, mas a lista oficial é plano pago e o fallback parava em 3 misses — a tabela ficava vazia com perfil 4 aberto.
+- **Não desfazer:** sem fingir `/user/list` no plano free. Sem GET pago.
+
+## 2026-10-28 — AdsPower: API local sem key
+
+- **O quê:** o farm não manda mais `Authorization` na API local. A aba só pede a URL e pede para desligar a autenticação por API key no AdsPower. Config antiga perde a key no read.
+- **Por quê:** a chave local rotaciona e quebra o `/status`, a lista e o start do perfil.
+- **Não desfazer:** SMS e 22.do continuam com token/key. Sem voltar campo de API key do AdsPower.
+
+## 2026-10-28 — Gmail/Outlook: parse do generate e usa a conta comprada
+
+- **O quê:** `/gmail/generate` devolve `aa.bb.cc+tag` + `domains: [@gmail.com]` — agora monta o e-mail. Se `/microsoft/generate` der 500, usa a conta Outlook/Hotmail que a compra já devolveu.
+- **Por quê:** o app achava que o Gmail não gerou endereço e descartava o Outlook recém-comprado.
+- **Não desfazer:** sem voltar para domínio twbeta na geração.
+
+## 2026-10-28 — Gerar caixa tenta os 3 se um estiver sem estoque
+
+- **O quê:** `Out of stock` num tipo (Hotmail, p.ex.) não aborta. Tenta Gmail, Outlook e Hotmail; só falha se os três estiverem vazios.
+- **Por quê:** o sorteio caía num módulo sem estoque na 22.do e a aba Configuração mostrava erro cru.
+- **Não desfazer:** mesma geração na Configuração, Caixas e etapa 1.
+
+## 2026-10-28 — Caixa nova é Gmail, Outlook ou Hotmail
+
+- **O quê:** `POST /account` (twbeta) sai. Cada caixa sorteia Gmail, Outlook ou Hotmail; sem estoque compra 1 ID. Leitura usa `/gmail/inbox` ou `/microsoft/inbox`. Configuração, Caixas e Farm explicam isso. Badge do teste mostra o estoque.
+- **Por quê:** a Meta não entregava confirmação em `twbeta.com`.
+- **Não desfazer:** etapa 1 sempre gera caixa nova. Sem token, pausa. Caixa antiga twbeta ainda lê em `/inbox`.
+
+## 2026-10-28 — Farm só edita o BM do card
+
+- **O quê:** etapa 1 não fecha só porque a razão está no seletor. Sem o chrome/URL desse BM, vai para o `business_id` gravado ou pausa. Etapa 2 recusa preencher se o chrome for outra empresa. O id fica no card e o save da UI não apaga.
+- **Por quê:** perfil com vários BMs (Vesol no chrome, Solfacil no card) gravava os detalhes no portfólio errado.
+- **Não desfazer:** não clicar no nome da empresa no seletor. Sem `business_id`, pausa humana.
+
+## 2026-10-28 — 22.do: lê o inbox de verdade e espera o e-mail
+
+- **O quê:** `POST /inbox` aceita array ou `items`/`list`; mensagem sem `messageId` não some. O save da UI não apaga caixa que o farm gravou. Etapa 3 espera ~1,5 min na mesma caixa (20×5s). A aba Caixas sonda a cada 8s.
+- **Por quê:** a Ebes (`nttxs1fn9pa6u6ne@twbeta.com`) estava persistida, mas 4 polls em 15s liam 0 e o parse/save podiam esconder o mail.
+- **Não desfazer:** sem gerar outra caixa na etapa 3. Sem facebook.com na janela Electron.
+
+## 2026-10-28 — E-mail: gerar na Configuração e excluir na listagem
+
+- **O quê:** a aba Configuração ganha **Gerar caixa nova**. Cada linha de Caixas tem **Excluir**, que tira o endereço do histórico local.
+- **Por quê:** gerar só na listagem e não poder limpar caixas mortas (mail.tm antiga, teste) atrapalhava o painel.
+- **Não desfazer:** a 22.do não apaga conta por API; a exclusão some só da listagem do app.
+
+## 2026-10-28 — E-mail passa a ser 22.do
+
+- **O quê:** mail.tm sai. A aba usa `https://22.do/api/v2` (token da dashboard → Bearer, POST /account, POST /inbox). Menu lateral fica ícone + **Email (22.do)** com painel de URL e token. Etapas 1 e 3 usam essa caixa. Sem token, o serviço não roda.
+- **Por quê:** a assinatura da 22.do cobre gerar caixa e ler a confirmação da Meta com a mesma conta.
+- **Não desfazer:** token só no `config.json`. Sem facebook.com na janela Electron. Caixas mail.tm antigas ficam SEM ACESSO.
+
+## 2026-10-28 — mail.tm: /domains em JSON puro
+
+- **O quê:** `GET /domains` com `Accept: application/json` vem como array (`[{ domain }]`), não `hydra:member`. O parser lê os dois formatos.
+- **Por quê:** o badge do mail.tm mostrava "respondeu sem domínio" com a API no ar.
+- **Não desfazer:** sem trocar o provedor. Sem gravar senha de caixa em outro lugar.
+
+## 2026-10-28 — Farm: etapa 3 confirma o e-mail pela caixa mail.tm
+
+- **O quê:** depois da empresa, o farm lê a caixa mail.tm associada (empresa/perfil ou `email_comercial`), pega o link da Meta no HTML e abre no Chromium do AdsPower. Token vencido tenta de novo com a senha guardada; Mensagens abre mesmo com SEM ACESSO.
+- **Por quê:** a listagem marcava todas as caixas sem acesso e o farm parava antes de confirmar o e-mail da BM.
+- **Não desfazer:** confirmação só no AdsPower via CDP. Sem facebook.com na janela Electron. Sem clicar pelo nome da empresa.
+
+## 2026-10-28 — Farm: depois do Confirmar, settings com razão fecha a etapa 1
+
+- **O quê:** suite vazia → pessoas do portfólio com `business_id` e a razão no chrome (ex.: Tek Energy Ltda) conclui a etapa 1 sem abrir o seletor. Segue para informações da empresa.
+- **Por quê:** o seletor não abre nessa settings e o farm pedia Continuar com o portfólio já criado.
+- **Não desfazer:** locators genéricos. Sem clicar pelo nome da empresa. Só compara a razão para saber se é a BM certa.
+
+## 2026-10-28 — Farm: telefone comercial (NN) NNNNN-NNNN
+
+- **O quê:** o número virtual entra no modal como `(35) 99988-7766`. Etapa 2 de informações da empresa fecha nesse formato.
+- **Por quê:** a Meta e a conferência visual pedem DDD + 9 dígitos com máscara, não o E.164 cru.
+- **Não desfazer:** só o número virtual no telefone comercial. Sem o telefone do PDF.
+
+## 2026-10-28 — Farm: etapa 2 gera número virtual
+
+- **O quê:** ao preencher Detalhes da empresa, o farm gera um número novo no Número Virtual (URL+key), usa só ele no telefone comercial e lista a ativação com razão social e perfil AdsPower. Pular etapa 2 não gera linha. Sem integração, pausa. O telefone do PDF deixa de ser obrigatório no card.
+- **Por quê:** a verificação da Meta precisa da linha virtual, no mesmo padrão da caixa mail.tm.
+- **Não desfazer:** SMS só com URL e API key. Sem telefone do CNPJ no modal. Sem etapa nova no pipeline.
+
+## 2026-10-28 — Farm: etapa 2 não salva de novo se já estiver preenchida
+
+- **O quê:** se a página já tem razão e endereço, o farm conclui a etapa 2 mesmo com o modal aberto. Depois de um Salvar sem erro, encerra — não preenche outra vez.
+- **Por quê:** o operador abriu o modal para conferir e o worker salvou de novo por cima do que já estava ok.
+- **Não desfazer:** locators genéricos. Sem clicar pelo nome da empresa.
+
+## 2026-10-28 — Farm: busca Brasil no select de país
+
+- **O quê:** depois de abrir o combobox **País**, o farm digita **Brasil** no campo de busca da listbox (a lista é virtualizada e só renderiza o A). Aí clica a opção.
+- **Por quê:** o select abria em Afeganistão e o option Brasil não existia no DOM.
+- **Não desfazer:** locators genéricos. País fixo Brasil.
+
+## 2026-10-28 — Farm: País Brasil, bairro na linha 2 e erro de salvar
+
+- **O quê:** o combobox **País** abre a lista fora do modal; o farm clica a opção **Brasil** na página. Sem país, não salva. Toast "Não foi possível salvar" / "Erro ao realizar a consulta" vira pausa, não loop. A linha 2 do endereço usa o **bairro** do comprovante (não sala/complemento). O campo do card passa a se chamar Bairro.
+- **Por quê:** a Meta recusa salvar com país vazio; a lista do país é portal fora do diálogo; a linha 2 estava com sala.
+- **Não desfazer:** locators genéricos. País fixo Brasil. Sem clicar pelo nome da empresa.
+
+## 2026-10-28 — Farm: etapa 2 usa o BM da sessão e preenche o modal aberto
+
+- **O quê:** ao pular o portfólio já listado, o `business_id` da landing desta sessão vai para as settings. O id antigo gravado no card (outro BM) deixa de ganhar. Se o modal **Editar detalhes da empresa** já está aberto, preenche e salva — sem pausar por "outro portfólio".
+- **Por quê:** a Vesol estava na lista (`1618424756678450`) e o worker abriu `business_info` da Pba (`1629787285455853`) e parou no formulário vazio.
+- **Não desfazer:** locators genéricos. Sem clicar pelo nome da empresa.
+
+## 2026-10-28 — Farm: modal da empresa já aberto é preenchido
+
+- **O quê:** o diálogo **Editar detalhes da empresa** é detectado pelos campos (País, placeholder da razão, EIN), não pelas 80 linhas do body. Se o modal já está aberto, preenche. `waitForText` no recorte curto deixa de decidir se o Editar funcionou. `business_id` de outro portfólio na home não é gravado no card.
+- **Por quê:** o overlay fica no fim do DOM; o worker via o menu atrás e pedia para abrir o modal que já estava na tela.
+- **Não desfazer:** locators genéricos. Sem clicar pelo nome da empresa.
+
+## 2026-10-27 — Farm: Editar da página não é o modal
+
+- **O quê:** "Editar" + "Detalhes da empresa" na página de settings deixa de valer como modal aberto. O farm clica o **Editar** que vem depois do título da seção e só então preenche.
+- **Por quê:** o snapshot junta as linhas e o worker tentava preencher campos que ainda não existiam.
+- **Não desfazer:** locators genéricos. Sem clicar pelo nome da empresa.
+
+## 2026-10-27 — Farm: etapa 2 preenche detalhes da empresa
+
+- **O quê:** depois do portfólio, o farm abre `/latest/settings/business_info?business_id=` e clica **Editar** em **Detalhes da empresa**. Preenche razão, país **Brasil**, endereço, cidade, UF, CEP, telefone, site e CNPJ (EIN) e **Salvar**. Se a página já tiver razão e endereço, pula. CAPTCHA tem um gancho automático (`attemptAutomaticCaptcha`) que hoje sempre falha e só então pede ação humana.
+- **Por quê:** a BM recém-criada nasce sem dados fiscais; o card do PDF já tem o que o modal pede.
+- **Não desfazer:** locators genéricos (rótulo/seção). Sem clicar pelo nome da empresa. País fixo Brasil. Sem bypass de CAPTCHA.
+
+## 2026-10-27 — Farm: card sem campo de responsável
+
+- **O quê:** o input **Responsável** some do card. Iniciar farm não exige esse dado. Nome e sobrenome do portfólio continuam vindo da conta do Facebook logada (ou do “Seu nome” pré-preenchido no modal de 3 campos).
+- **Por quê:** o operador não precisa digitar o nome; o farm já lê da sessão da Meta.
+- **Não desfazer:** locators genéricos. Sem nome de empresa no clique.
+
 ## 2026-10-27 — Farm: suite vazia com business_id vai para pessoas do portfólio
 
 - **O quê:** depois de criar, `latest/home?business_id=` com "Não é possível acessar o Meta Business Suite" deixa de ser tela desconhecida. O farm lê o `business_id` e abre `/latest/settings/business_users/?nav_ref=bm_settings_redirect_migration&bm_redirect_migration=true&business_id=`. Aí abre o seletor para conferir a razão. O home que já funciona (`Etapas para começar`) continua `portfolio.existing`. As settings seguintes montam a URL com esse id.

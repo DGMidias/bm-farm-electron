@@ -67,6 +67,27 @@ export function isPaidAdsPowerListError(message: string): boolean {
   return /paid|subscription|plano/i.test(message);
 }
 
+export function isMetaPageUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname;
+    return host.endsWith("facebook.com") || host.endsWith("meta.com");
+  } catch {
+    return false;
+  }
+}
+
+export function pickAdsPowerTabIndex(urls: string[], openUrl?: string): number {
+  if (openUrl && !isMetaPageUrl(openUrl)) return -1;
+  const meta = urls.findIndex((url) => isMetaPageUrl(url));
+  if (meta >= 0) return meta;
+  return urls.length ? 0 : -1;
+}
+
+export function shouldReuseAdsPowerTab(input: { running: boolean; profile?: string | null; target: string }): boolean {
+  const target = input.target.trim();
+  return Boolean(input.running && input.profile && target && input.profile === target);
+}
+
 export function mapAdsPowerActive(serial: string, raw: Record<string, unknown> | undefined): AdsPowerProfile {
   const open = String(raw?.status ?? "").toLowerCase() === "active";
   return {

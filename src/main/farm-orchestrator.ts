@@ -3,7 +3,14 @@ import { clampBatchSize } from "@shared/farm-etapas";
 import { canDismissCompany, canDismissFarm, farmNeedsReview } from "@shared/farm-run";
 import type { EmpresaCard } from "@shared/empresa";
 import type { AdsPowerConfig, FarmCompanyRun, FarmEvent, FarmRunState, HumanPause } from "@shared/types";
-import { FarmEngine, loadPageMap, type CreateCompanyInbox } from "./engine";
+import {
+  FarmEngine,
+  loadPageMap,
+  type CreateCompanyInbox,
+  type CreateCompanyNumber,
+  type PersistCompanyBusinessId,
+  type ReadCompanyInbox,
+} from "./engine";
 import { logError } from "./log";
 
 export class FarmOrchestrator extends EventEmitter {
@@ -19,6 +26,9 @@ export class FarmOrchestrator extends EventEmitter {
   constructor(
     private readonly repoRoot: string,
     private readonly createCompanyInbox?: CreateCompanyInbox,
+    private readonly createCompanyNumber?: CreateCompanyNumber,
+    private readonly readCompanyInbox?: ReadCompanyInbox,
+    private readonly persistCompanyBusinessId?: PersistCompanyBusinessId,
   ) {
     super();
   }
@@ -186,11 +196,29 @@ export class FarmOrchestrator extends EventEmitter {
       company.status = "running";
       company.attention = false;
     }
-    const engine = new FarmEngine(this.repoRoot, loadPageMap(this.repoRoot), this.createCompanyInbox);
+    const engine = new FarmEngine(
+      this.repoRoot,
+      loadPageMap(this.repoRoot),
+      this.createCompanyInbox,
+      this.createCompanyNumber,
+      this.readCompanyInbox,
+      this.persistCompanyBusinessId,
+    );
     this.sessions.set(card.id, engine);
     this.attach(engine, card);
-    const result = await engine.runPortfolio(config, card);
-    this.sessions.delete(card.id);
+    let result: "ok" | "paused" | "erro" = "erro";
+    try {
+      result = await engine.runPortfolio(config, card);
+      if (result === "ok" && !this.stopping) {
+        result = await engine.runEmpresa(config, card);
+      }
+      if (result === "ok" && !this.stopping) {
+        result = await engine.runEmailConfirm(config, card);
+      }
+    } finally {
+      this.sessions.delete(card.id);
+      await engine.release();
+    }
     if (!company) return;
     if (result === "ok") {
       company.status = "ok";
@@ -218,7 +246,7 @@ export class FarmOrchestrator extends EventEmitter {
     };
     await Promise.all(Array.from({ length: workers }, () => launch()));
     this.state.running = false;
-    this.state.mensagem = this.stopping ? "Farm encerrado." : "Farm concluído nesta fase (portfólio).";
+    this.state.mensagem = this.stopping ? "Farm encerrado." : "Farm concluído nesta fase (portfólio, empresa e e-mail).";
     this.emitState();
   }
 }

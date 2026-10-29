@@ -1,4 +1,7 @@
+import { empresaLocatorTexts } from "./empresa-fill";
 import {
+  ADS_POLICY_ACCEPT,
+  ADS_POLICY_DONE,
   CONTINUE_SESSION_TRIGGERS,
   CREATE_BUTTON_NAMES,
   LANDING_TRIGGERS,
@@ -33,8 +36,10 @@ export const SWITCHER_CREATE_TRIGGERS = [
   { role: "menuitem", names: ["Criar um portfólio empresarial", "Create a business portfolio"] },
 ];
 
-/** Abrir o chip do canto superior esquerdo. Papel combobox, sem o nome do ativo. */
+/** Chip do seletor: chrome "portfólio empresarial" ou o nome do BM aberto. Nunca 2FA/País. */
 export const SWITCHER_OPEN = { role: "combobox" as const };
+export const SWITCHER_COMBO_NAME =
+  /portfólio empresarial|business portfolio|^(?!(ninguém|nobody|país|country|somente administradores|todos)\b).+/i;
 
 export type PostCreateStep = "add_assets" | "add_people" | "confirm";
 
@@ -69,7 +74,11 @@ export function farmLocatorTexts(): string[] {
     ...POST_CREATE_NEXT,
     ...POST_CREATE_CONFIRM,
     ...CONTINUE_SESSION_TRIGGERS.flatMap((trigger) => trigger.names),
+    ...ADS_POLICY_ACCEPT,
+    ...ADS_POLICY_DONE,
     SWITCHER_OPEN.role,
+    SWITCHER_COMBO_NAME.source,
+    ...empresaLocatorTexts(),
   ];
 }
 
@@ -106,6 +115,35 @@ export function isLoginChooser(texts: string[]): boolean {
 export function shouldClickContinueSession(input: { texts: string[]; formOpen?: boolean }): boolean {
   if (input.formOpen) return false;
   return isLoginChooser(input.texts);
+}
+
+export function isAdsPolicyDialog(texts: string[]): boolean {
+  if (isPortfolioCreateForm(texts)) return false;
+  const blob = texts.join(" ");
+  return (
+    /política de não discriminação|non-discrimination policy/i.test(blob) &&
+    /ao clicar em aceito|by clicking (i accept|accept)|você confirma que|you confirm that/i.test(blob)
+  );
+}
+
+export function isAdsPolicyThanks(texts: string[]): boolean {
+  const blob = texts.join(" ");
+  return /agradecemos a sua aceitação|thank you for (accepting|your acceptance)/i.test(blob);
+}
+
+export function adsPolicyButtonNames(texts: string[]): readonly string[] | undefined {
+  if (isAdsPolicyThanks(texts)) return ADS_POLICY_DONE;
+  if (isAdsPolicyDialog(texts)) return ADS_POLICY_ACCEPT;
+  return undefined;
+}
+
+export async function clickAdsPolicy(
+  scope: Pick<PortfolioScope, "getByRole">,
+  texts: string[],
+): Promise<string | undefined> {
+  const names = adsPolicyButtonNames(texts);
+  if (!names) return undefined;
+  return clickNamedButtons(scope, names);
 }
 
 export function splitFacebookName(full: string): { nome: string; sobrenome: string } | undefined {
@@ -208,7 +246,7 @@ export async function openPortfolioModal(scope: Pick<PortfolioScope, "getByRole"
 }
 
 export async function openSwitcher(scope: Pick<PortfolioScope, "getByRole">): Promise<boolean> {
-  const chip = scope.getByRole(SWITCHER_OPEN.role);
+  const chip = scope.getByRole(SWITCHER_OPEN.role, { name: SWITCHER_COMBO_NAME });
   if ((await chip.count()) === 0) return false;
   try {
     await chip.first().click({ timeout: 4000 });

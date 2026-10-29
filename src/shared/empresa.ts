@@ -17,6 +17,45 @@ export interface EmpresaCard {
   documento_sem_alteracao_de_conteudo: boolean;
   adspower_profile: string;
   ler_pdf_automatico: boolean;
+  business_id?: string;
+}
+
+function normalizeEmpresaRazao(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+export function sameEmpresaIdentity(
+  left: Pick<EmpresaCard, "razao_social" | "cnpj">,
+  right: Pick<EmpresaCard, "razao_social" | "cnpj">,
+): boolean {
+  return normalizeEmpresaRazao(left.razao_social) === normalizeEmpresaRazao(right.razao_social) && digits(left.cnpj) === digits(right.cnpj);
+}
+
+export function withEmpresaBusinessId(empresas: EmpresaCard[], cardId: string, businessId: string): EmpresaCard[] {
+  const id = businessId.trim();
+  return empresas.map((item) => {
+    if (item.id !== cardId) return item;
+    if (!id) {
+      const { business_id: _dropped, ...rest } = item;
+      return rest;
+    }
+    return { ...item, business_id: id };
+  });
+}
+
+export function mergeEmpresaBusinessIds(disk: EmpresaCard[] | undefined, incoming: EmpresaCard[] | undefined): EmpresaCard[] {
+  const fromDisk = new Map((disk ?? []).map((item) => [item.id, item]));
+  return (incoming ?? disk ?? []).map((card) => {
+    const previous = fromDisk.get(card.id);
+    const incomingId = card.business_id?.trim();
+    const diskId = previous?.business_id?.trim();
+    if (previous && !sameEmpresaIdentity(card, previous)) {
+      const { business_id: _dropped, ...rest } = card;
+      return rest;
+    }
+    const stored = incomingId || diskId;
+    return stored ? { ...card, business_id: stored } : card;
+  });
 }
 
 export function emptyEmpresa(id: string = crypto.randomUUID()): EmpresaCard {
@@ -76,12 +115,10 @@ export function empresaFieldErrors(card: EmpresaCard): EmpresaFieldErrors {
   const required: Array<keyof EmpresaCard> = [
     "razao_social",
     "cnpj",
-    "responsavel",
     "endereco",
     "cidade",
     "estado",
     "cep",
-    "telefone",
     "site",
     "adspower_profile",
     "documento_original",

@@ -138,6 +138,9 @@ export function mergeSeenActivations(live: SmsActivation[], cached: SmsActivatio
             ...previous,
             ...item,
             messages: item.messages.length > 0 ? item.messages : previous.messages,
+            empresaId: item.empresaId || previous.empresaId,
+            razaoSocial: item.razaoSocial || previous.razaoSocial,
+            adspowerProfile: item.adspowerProfile || previous.adspowerProfile,
           }
         : item,
     );
@@ -227,4 +230,10 @@ export function nationalPhone(phone: string): string {
   const digits = phone.replace(/\D/g, "");
   if (digits.startsWith("55") && digits.length > 11) return digits.slice(2);
   return digits || phone;
+}
+
+export function activationOwnerLabel(item: Pick<SmsActivation, "razaoSocial" | "adspowerProfile">): string {
+  const empresa = item.razaoSocial?.trim() || "sem empresa";
+  const profile = item.adspowerProfile?.trim();
+  return profile ? `${empresa} · perfil ${profile}` : empresa;
 }

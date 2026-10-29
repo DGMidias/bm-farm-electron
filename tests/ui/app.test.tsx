@@ -23,7 +23,7 @@ describe("UI contrato", () => {
     const user = userEvent.setup();
     render(<App />);
     expect(screen.getByRole("button", { name: /Número Virtual/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Email \(mail\.tm\)/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Email \(22\.do\)/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /AdsPower/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^Farm de BM$/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^Histórico$/ })).toBeInTheDocument();
@@ -38,14 +38,21 @@ describe("UI contrato", () => {
     expect(screen.getByRole("button", { name: /Números/ })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /Números/ }));
     expect(screen.getByText(/Ativações em andamento/)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /Email \(mail\.tm\)/ }));
+    await user.click(screen.getByRole("button", { name: /Email \(22\.do\)/ }));
+    expect(screen.getByLabelText(/URL base da API/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Token/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Configuração/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Caixas/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Gerar caixa nova/ })).toBeInTheDocument();
+    expect(screen.getAllByText(/Gmail, Outlook ou Hotmail/i).length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: /^Mensagens$/ })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /Caixas/ }));
     expect(screen.getByRole("button", { name: /Gerar caixa nova/ })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /AdsPower/ }));
     expect(screen.queryByRole("button", { name: /Testar conexão/ })).not.toBeInTheDocument();
     expect(screen.getByText(/Checando AdsPower/)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^API key$/)).not.toBeInTheDocument();
+    expect(screen.getByText(/desligue a autenticação por API key/i)).toBeInTheDocument();
     expect(screen.queryByLabelText(/Perfil de teste/)).not.toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: /Grupo/ })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /^Farm de BM$/ }));
@@ -99,6 +106,7 @@ describe("UI contrato", () => {
     expect(screen.getByRole("button", { name: /Escolher PDF/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Excluir empresa/ })).toBeInTheDocument();
     expect(screen.getByLabelText(/Perfil AdsPower/)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Responsável/)).not.toBeInTheDocument();
     expect(screen.getByRole("option", { name: /2 · Perfil 2/ })).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: /Documento original/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Preencher portfolio/ })).not.toBeInTheDocument();
@@ -206,7 +214,7 @@ describe("UI contrato", () => {
         state={{
           running: false,
           batchSize: 1,
-          mensagem: "Farm concluído nesta fase (portfólio).",
+          mensagem: "Farm concluído nesta fase (portfólio e empresa).",
           companies: [
             {
               id: "e1",
@@ -247,7 +255,7 @@ describe("UI contrato", () => {
         state={{
           running: false,
           batchSize: 2,
-          mensagem: "Farm concluído nesta fase (portfólio).",
+          mensagem: "Farm concluído nesta fase (portfólio e empresa).",
           companies: [
             {
               id: "e1",
@@ -309,6 +317,8 @@ describe("UI contrato", () => {
       />,
     );
     expect(screen.queryByLabelText(/Perfil de teste/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^API key$/)).not.toBeInTheDocument();
+    expect(screen.getByText(/desligue a autenticação por API key/i)).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: /^Nº$/ })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: /Nome/ })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: /ID/ })).toBeInTheDocument();
@@ -397,6 +407,8 @@ describe("UI contrato", () => {
     expect(screen.getByText("ATIVO")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Cancelar/ })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: /Código SMS/ })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /Empresa \/ perfil AdsPower/ })).toBeInTheDocument();
+    expect(screen.getByText("sem empresa")).toBeInTheDocument();
     expect(onListNumbers).toHaveBeenCalledTimes(1);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(8000);
@@ -483,6 +495,7 @@ describe("UI contrato", () => {
     const user = userEvent.setup();
     const onOpenInbox = vi.fn(async () => undefined);
     const onListInboxes = vi.fn(async () => undefined);
+    const onDelete = vi.fn(async () => undefined);
     const config = structuredClone(DEFAULT_CONFIG);
     config.email.knownInboxes = [
       {
@@ -503,19 +516,23 @@ describe("UI contrato", () => {
         config={config}
         onChange={() => undefined}
         onCreate={async () => undefined}
+        onDelete={onDelete}
         onListInboxes={onListInboxes}
         onOpenInbox={onOpenInbox}
       />,
     );
-    expect(screen.queryByRole("button", { name: /Gerar caixa nova/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Gerar caixa nova/ })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /Caixas/ }));
     expect(screen.getByText("bmteste@mail.tm")).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: /Empresa \/ perfil AdsPower/ })).toBeInTheDocument();
     expect(screen.getByText("Vesol Energia Solar Ltda · perfil 2")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Copiar e-mail/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Excluir/ })).toBeInTheDocument();
     expect(screen.getByText("ATIVO")).toBeInTheDocument();
     expect(onListInboxes).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("tab", { name: /^Mensagens$/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Excluir/ }));
+    expect(onDelete).toHaveBeenCalledWith("bmteste@mail.tm");
     await user.click(screen.getByRole("button", { name: /^Mensagens$/ }));
     expect(onOpenInbox).toHaveBeenCalledWith("bmteste@mail.tm");
     expect(screen.getByText("Confirme sua BM")).toBeInTheDocument();

@@ -1,5 +1,6 @@
 import { BR_DDDS, DEFAULT_DDD, isBrDdd } from "../../src/shared/ddd";
 import {
+  activationOwnerLabel,
   buildCreateBody,
   canCancelActivation,
   defaultSmsOption,
@@ -28,7 +29,7 @@ import {
   smsReady,
   sortSmsServices,
 } from "../../src/main/sms";
-import { extractConfirmationLink } from "../../src/main/mail-tm";
+import { extractConfirmationLink } from "../../src/main/mail-22do";
 import { describe, expect, it } from "vitest";
 
 describe("SMS numero-virtual", () => {
@@ -192,6 +193,16 @@ describe("SMS numero-virtual", () => {
     expect(formatRestClock("2026-01-01T10:18:19.000Z", Date.parse("2026-01-01T10:00:00.000Z"))).toBe("18:19");
     expect(formatActivationWhen("2026-10-26T23:12:00.000Z")).toMatch(/^\d{2}\/\d{2} \d{2}:\d{2}$/);
     expect(nationalPhone("5549920063023")).toBe("49920063023");
+    const owned = mergeSeenActivations(
+      [mapActivation({ id: 1, phone: "5511", status: "waiting_sms" })],
+      [{ ...mapActivation({ id: 1, phone: "5511", status: "pending" }), razaoSocial: "Vesol Energia Solar Ltda", adspowerProfile: "4" }],
+    );
+    expect(owned.find((item) => item.id === "1")?.razaoSocial).toBe("Vesol Energia Solar Ltda");
+    expect(owned.find((item) => item.id === "1")?.adspowerProfile).toBe("4");
+    expect(activationOwnerLabel({ razaoSocial: "Vesol Energia Solar Ltda", adspowerProfile: "4" })).toBe(
+      "Vesol Energia Solar Ltda · perfil 4",
+    );
+    expect(activationOwnerLabel({})).toBe("sem empresa");
   });
 
   it("lê smsCode da API .com e o SMS mais recente da .app", () => {

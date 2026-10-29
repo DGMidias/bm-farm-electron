@@ -3,11 +3,14 @@ import {
   businessIdFromUrl,
   formatExistingBmLog,
   formatFarmDetachLog,
+  formatEmpresaFilledLog,
   formatSuiteUnavailableRedirectLog,
   formatPortfolioCreatedLog,
   formatPortfolioFilledLog,
   formatPortfolioRedirectLog,
+  formatEmailConfirmLog,
   formatTempEmailLog,
+  formatVirtualPhoneLog,
   KEEP_ADSPOWER_OPEN_ON_END,
   shouldLogDetach,
 } from "@shared/farm-log";
@@ -84,5 +87,31 @@ describe("log de execução do farm", () => {
     expect(shouldLogDetach("2", true)).toBe(false);
     expect(shouldLogDetach("", false)).toBe(false);
     expect(shouldLogDetach(undefined, false)).toBe(false);
+  });
+
+  it("o log da etapa 2 traz razão, business_id e quantos campos", () => {
+    const log = formatEmpresaFilledLog({
+      razaoSocial: "Vesol Energia Solar Ltda",
+      businessId: "1618424756678450",
+      keys: ["razao_social", "endereco", "cidade", "estado", "cep", "telefone", "site", "cnpj"],
+    });
+    expect(log).toContain("Vesol Energia Solar Ltda");
+    expect(log).toContain("business_id=1618424756678450");
+    expect(log).toContain("8 campos");
+    expect(log).not.toMatch(/desconhecida/i);
+    const phone = formatVirtualPhoneLog({
+      phone: "35999887766",
+      razaoSocial: "Vesol Energia Solar Ltda",
+      profile: "4",
+    });
+    expect(phone).toBe("Número virtual · 35999887766 · Vesol · perfil 4");
+    expect(
+      formatEmailConfirmLog({
+        address: "bm1@mail.tm",
+        url: "https://www.facebook.com/confirmemail.php?c=1",
+        razaoSocial: "Tek Energy Ltda",
+        profile: "4",
+      }),
+    ).toBe("Confirmando e-mail · bm1@mail.tm · Tek · perfil 4 · https://www.facebook.com/confirmemail.php?c=1");
   });
 });

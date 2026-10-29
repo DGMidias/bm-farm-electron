@@ -11,14 +11,14 @@ import { FarmRunPage } from "./pages/FarmRunPage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { SmsPage } from "./pages/SmsPage";
 import numeroVirtualLogo from "./assets/numero-virtual.png";
-import mailTmLogo from "./assets/mail-tm.svg";
+import email22doLogo from "./assets/22do.svg";
 import adsPowerLogo from "./assets/adspower.svg";
 import farmLogo from "./assets/farm.svg";
 import historyLogo from "./assets/history.svg";
 
 const MENUS: Array<{ id: MenuId; label: string; icon?: string }> = [
   { id: "sms", label: "Número Virtual", icon: numeroVirtualLogo },
-  { id: "email", label: "Email (mail.tm)", icon: mailTmLogo },
+  { id: "email", label: "Email (22.do)", icon: email22doLogo },
   { id: "adspower", label: "AdsPower", icon: adsPowerLogo },
   { id: "farm", label: "Farm de BM", icon: farmLogo },
   { id: "history", label: "Histórico", icon: historyLogo },
@@ -137,7 +137,7 @@ export function App() {
       stop = true;
       window.clearInterval(timer);
     };
-  }, [config.sms.apiKey, config.sms.baseUrl, config.adspower.apiKey, config.adspower.baseUrl]);
+  }, [config.sms.apiKey, config.sms.baseUrl, config.email.token, config.email.baseUrl, config.adspower.baseUrl]);
 
   useEffect(() => {
     if (menu !== "sms" || !smsResult?.ok) return;
@@ -278,6 +278,19 @@ export function App() {
               setEmailAction({ ok: true, mensagem: created?.address ? `Caixa ${created.address}` : "Caixa gerada." });
             } catch (error) {
               setEmailAction({ ok: false, mensagem: error instanceof Error ? error.message : "Falha ao gerar e-mail." });
+            } finally {
+              setBusy(false);
+            }
+          }}
+          onDelete={async (address) => {
+            setBusy(true);
+            try {
+              await desktop()?.deleteInbox(address);
+              const saved = await desktop()?.getConfig();
+              applySaved(saved);
+              setEmailAction({ ok: true, mensagem: `Caixa ${address} excluída.` });
+            } catch (error) {
+              setEmailAction({ ok: false, mensagem: error instanceof Error ? error.message : "Falha ao excluir a caixa." });
             } finally {
               setBusy(false);
             }

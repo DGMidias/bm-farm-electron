@@ -159,6 +159,21 @@
       "onMiss": ["empresa.info", "login", "unknown"]
     },
     {
+      "id": "empresa.details_form",
+      "step": "empresa",
+      "match": {
+        "urlIncludes": ["/latest/settings/business_info"],
+        "anyText": [
+          "Editar detalhes da empresa",
+          "Edit business details",
+          "Identificação fiscal (EIN)",
+          "Tax ID (EIN)"
+        ]
+      },
+      "fields": ["razao_social", "endereco", "cidade", "estado", "cep", "telefone", "site", "cnpj"],
+      "onMiss": ["empresa.info", "unknown"]
+    },
+    {
       "id": "empresa.info",
       "step": "empresa",
       "match": {

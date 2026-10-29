@@ -39,8 +39,8 @@ export function FarmPage({ config, profiles, onChange, onStartFarm, onPickDocume
     <section className="page">
       <h1>Farm de BM</h1>
       <p className="muted">
-        Um botão inicia o lote. Esta fase cria só o portfólio empresarial no Chromium do AdsPower. O rascunho grava ao
-        clicar em Iniciar farm.
+        Um botão inicia o lote. Esta fase cria o portfólio e preenche os detalhes da empresa no Chromium do AdsPower. O
+        rascunho grava ao clicar em Iniciar farm.
       </p>
       <div className="farm-toolbar">
         <button className="btn" type="button" onClick={() => onChange({ ...config, empresas: [...config.empresas, emptyEmpresa()] })}>
@@ -95,14 +95,13 @@ export function FarmPage({ config, profiles, onChange, onStartFarm, onPickDocume
               <div className="form-grid">
                 <Field id={`${card.id}-razao`} label="Razão social" maxLength={FIELD_LIMITS.medium} value={card.razao_social} invalid={Boolean(errors.razao_social)} error={errors.razao_social} onChange={(razao_social) => update(card.id, { razao_social })} />
                 <Field id={`${card.id}-cnpj`} label="CNPJ" maxLength={FIELD_LIMITS.cnpj} value={card.cnpj} invalid={Boolean(errors.cnpj)} error={errors.cnpj} onChange={(cnpj) => update(card.id, { cnpj })} />
-                <Field id={`${card.id}-resp`} label="Responsável" maxLength={FIELD_LIMITS.medium} value={card.responsavel} invalid={Boolean(errors.responsavel)} error={errors.responsavel} onChange={(responsavel) => update(card.id, { responsavel })} />
                 <Field id={`${card.id}-email`} label="E-mail comercial" maxLength={FIELD_LIMITS.medium} value={card.email_comercial} invalid={Boolean(errors.email_comercial)} error={errors.email_comercial} onChange={(email_comercial) => update(card.id, { email_comercial })} />
                 <Field id={`${card.id}-end`} label="Endereço" maxLength={FIELD_LIMITS.long} wide value={card.endereco} invalid={Boolean(errors.endereco)} error={errors.endereco} onChange={(endereco) => update(card.id, { endereco })} />
-                <Field id={`${card.id}-comp`} label="Complemento" maxLength={FIELD_LIMITS.medium} value={card.complemento} onChange={(complemento) => update(card.id, { complemento })} />
+                <Field id={`${card.id}-comp`} label="Bairro" maxLength={FIELD_LIMITS.medium} value={card.complemento} onChange={(complemento) => update(card.id, { complemento })} />
                 <Field id={`${card.id}-cid`} label="Cidade" maxLength={FIELD_LIMITS.medium} value={card.cidade} invalid={Boolean(errors.cidade)} error={errors.cidade} onChange={(cidade) => update(card.id, { cidade })} />
                 <Field id={`${card.id}-uf`} label="UF" maxLength={FIELD_LIMITS.uf} value={card.estado} invalid={Boolean(errors.estado)} error={errors.estado} onChange={(estado) => update(card.id, { estado })} />
                 <Field id={`${card.id}-cep`} label="CEP" maxLength={FIELD_LIMITS.cep} value={card.cep} invalid={Boolean(errors.cep)} error={errors.cep} onChange={(cep) => update(card.id, { cep })} />
-                <Field id={`${card.id}-tel`} label="Telefone" maxLength={FIELD_LIMITS.phone} value={card.telefone} invalid={Boolean(errors.telefone)} error={errors.telefone} onChange={(telefone) => update(card.id, { telefone })} />
+                <Field id={`${card.id}-tel`} label="Telefone (PDF · a Meta usa o número virtual)" maxLength={FIELD_LIMITS.phone} value={card.telefone} invalid={Boolean(errors.telefone)} error={errors.telefone} onChange={(telefone) => update(card.id, { telefone })} />
                 <Field id={`${card.id}-site`} label="Site HTTPS" maxLength={FIELD_LIMITS.url} value={card.site} invalid={Boolean(errors.site)} error={errors.site} onChange={(site) => update(card.id, { site })} />
                 <div className={`field wide${errors.documento_original ? " invalid" : ""}`}>
                   <span>Comprovante CNPJ</span>
@@ -142,7 +141,7 @@ export function FarmPage({ config, profiles, onChange, onStartFarm, onPickDocume
                 Documento original sem alteração
               </label>
               {errors.documento_sem_alteracao_de_conteudo ? <small className="field-error">{errors.documento_sem_alteracao_de_conteudo}</small> : null}
-              <p className="muted">Etapa 1 sempre gera uma caixa mail.tm nova (é nela que chega a verificação da Meta). O e-mail do PDF não entra no formulário.</p>
+              <p className="muted">Nome e sobrenome vêm da conta do Facebook logada. Etapa 1 sempre gera uma caixa 22.do nova em Gmail, Outlook ou Hotmail (sorteio). Etapa 2 sempre gera um número virtual novo (é ele que entra no telefone comercial). Etapa 3 lê essa caixa, pega o link da Meta e confirma no AdsPower. E-mail e telefone do PDF não entram no formulário da Meta.</p>
             </article>
           );
         })}

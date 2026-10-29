@@ -1,4 +1,4 @@
-import { formatEmpresaFields, titleName } from "@shared/empresa-format";
+import { formatBrMobilePhone, formatEmpresaFields, titleName } from "@shared/empresa-format";
 import { describe, expect, it } from "vitest";
 
 describe("apresentação dos campos da empresa", () => {
@@ -36,5 +36,8 @@ describe("apresentação dos campos da empresa", () => {
     expect(fields.cep).toBe("89.258-001");
     expect(fields.telefone).toBe("(47) 3204-3799");
     expect(fields.site).toBe("https://www.vesol.com.br");
+    expect(formatBrMobilePhone("5535999887766")).toBe("(35) 99988-7766");
+    expect(formatBrMobilePhone("35999887766")).toBe("(35) 99988-7766");
+    expect(formatBrMobilePhone("(35) 99988-7766")).toBe("(35) 99988-7766");
   });
 });

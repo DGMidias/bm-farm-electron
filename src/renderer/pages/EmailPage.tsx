@@ -1,7 +1,9 @@
-import { inboxOwnerLabel, inboxStatusLabel } from "@shared/mail-view";
+import { FIELD_LIMITS } from "@harness/ui-contract";
+import { inboxOwnerLabel, inboxStatusLabel, mailKindFromAddress, mailKindLabel } from "@shared/mail-view";
 import { formatActivationWhen } from "@shared/sms-view";
 import type { AppConfig, ConnectionResult } from "@shared/types";
 import { useEffect, useState } from "react";
+import { Field } from "../components/Field";
 
 interface Props {
   config: AppConfig;
@@ -10,21 +12,45 @@ interface Props {
   busy?: boolean;
   onChange: (config: AppConfig) => void;
   onCreate: () => Promise<void>;
+  onDelete: (address: string) => Promise<void>;
   onListInboxes: () => Promise<void>;
   onOpenInbox: (address: string) => Promise<void>;
 }
 
-export function EmailPage({ config, live, action, busy, onCreate, onListInboxes, onOpenInbox }: Props) {
-  const inboxes = config.email.knownInboxes ?? [];
-  const [tab, setTab] = useState<"service" | "inboxes" | "messages">("service");
-  const [selected, setSelected] = useState(config.email.lastAddress);
+export function EmailPage({
+  config,
+  live,
+  action,
+  busy,
+  onChange,
+  onCreate,
+  onDelete,
+  onListInboxes,
+  onOpenInbox,
+}: Props) {
+  const email = config.email;
+  const inboxes = email.knownInboxes ?? [];
+  const [tab, setTab] = useState<"config" | "inboxes" | "messages">("config");
+  const [selected, setSelected] = useState(email.lastAddress);
   const inbox = inboxes.find((item) => item.address === selected);
   const messages = inbox?.messages ?? [];
   const connected = Boolean(live?.ok);
 
   useEffect(() => {
     if (tab !== "inboxes") return;
-    void onListInboxes();
+    let running = false;
+    const tick = async () => {
+      if (running) return;
+      running = true;
+      try {
+        await onListInboxes();
+      } finally {
+        running = false;
+      }
+    };
+    void tick();
+    const timer = window.setInterval(() => void tick(), 8000);
+    return () => window.clearInterval(timer);
   }, [tab, onListInboxes]);
 
   useEffect(() => {
@@ -46,23 +72,66 @@ export function EmailPage({ config, live, action, busy, onCreate, onListInboxes,
 
   return (
     <section className="page">
-      <h1>E-mail temporário</h1>
-      <p className="muted">mail.tm entra na criação do portfólio. A aba principal só confere se o serviço está no ar; gerar e ler fica nas subabas.</p>
+      <h1>Provedor de e-mail</h1>
+      <p className="muted">
+        A 22.do gera a caixa da etapa 1 em Gmail, Outlook ou Hotmail (sorteio) e entrega o link da Meta na etapa 3. Cole
+        o token da dashboard em{" "}
+        <a href="https://22.do/dash/" target="_blank" rel="noreferrer">
+          22.do/dash
+        </a>
+        . Sem token o farm pausa. Sem estoque, o app compra 1 ID na 22.do.
+      </p>
       <div className="form-panel">
-        <div className={`live-badge ${connected ? "ok" : live ? "err" : ""}`}>{live ? live.mensagem : "Checando mail.tm…"}</div>
+        <div className={`live-badge ${connected ? "ok" : live ? "err" : ""}`}>
+          {live ? live.mensagem : "Checando 22.do…"}
+        </div>
+        <div className="form-grid flush">
+          <Field
+            id="email-url"
+            label="URL base da API"
+            kind="url"
+            maxLength={FIELD_LIMITS.url}
+            wide
+            value={email.baseUrl}
+            onChange={(baseUrl) => onChange({ ...config, email: { ...email, baseUrl } })}
+          />
+          <Field
+            id="email-token"
+            label="Token"
+            kind="secret"
+            maxLength={FIELD_LIMITS.secret}
+            type="password"
+            wide
+            value={email.token}
+            onChange={(token) => onChange({ ...config, email: { ...email, token } })}
+          />
+        </div>
       </div>
       <div className="subnav" role="tablist">
-        <button className={tab === "service" ? "active" : ""} type="button" onClick={() => setTab("service")}>
-          Serviço
+        <button className={tab === "config" ? "active" : ""} type="button" onClick={() => setTab("config")}>
+          Configuração
         </button>
-        <button className={tab === "inboxes" || tab === "messages" ? "active" : ""} type="button" onClick={() => setTab("inboxes")}>
+        <button
+          className={tab === "inboxes" || tab === "messages" ? "active" : ""}
+          type="button"
+          onClick={() => setTab("inboxes")}
+        >
           Caixas
         </button>
       </div>
-      {tab === "service" ? (
+      {tab === "config" ? (
         <div className="card">
-          <strong>Status do mail.tm</strong>
-          <p className="muted">Sem gerar caixa aqui. Se o badge estiver ok, abra Caixas para criar um endereço e receber e-mail.</p>
+          {action ? <div className={action.ok ? "status ok" : "status err"}>{action.mensagem}</div> : null}
+          <strong>Status da 22.do</strong>
+          <p className="muted">
+            URL padrão <code>https://22.do/api/v2</code>. Toda caixa nova é Gmail, Outlook ou Hotmail — um dos três, à
+            sorte. Sem estoque, compra 1 ID (desconta o saldo). A listagem fica em Caixas.
+          </p>
+          <div className="row">
+            <button className="btn" type="button" disabled={busy || !connected} onClick={() => void onCreate()}>
+              Gerar caixa nova
+            </button>
+          </div>
         </div>
       ) : null}
       {tab === "inboxes" ? (
@@ -74,7 +143,10 @@ export function EmailPage({ config, live, action, busy, onCreate, onListInboxes,
             </button>
           </div>
           <strong>Caixas geradas neste app</strong>
-          <p className="muted">O mail.tm não lista histórico da conta. Guardamos o que o app criar e o GET confirmar.</p>
+          <p className="muted">
+            Cada linha liga empresa e perfil AdsPower. Novas caixas são Gmail, Outlook ou Hotmail. Caixas mail.tm ou
+            twbeta antigas ficam no histórico — gere uma nova.
+          </p>
           {inboxes.length === 0 ? (
             <p className="muted">Nenhuma caixa ainda. Gere uma para receber confirmação.</p>
           ) : (
@@ -83,6 +155,7 @@ export function EmailPage({ config, live, action, busy, onCreate, onListInboxes,
                 <thead>
                   <tr>
                     <th>Endereço</th>
+                    <th>Tipo</th>
                     <th>Empresa / perfil AdsPower</th>
                     <th>Status</th>
                     <th>Msgs</th>
@@ -99,6 +172,7 @@ export function EmailPage({ config, live, action, busy, onCreate, onListInboxes,
                           <CopyButton label="Copiar e-mail" value={item.address} />
                         </div>
                       </td>
+                      <td>{mailKindLabel(item.kind ?? mailKindFromAddress(item.address))}</td>
                       <td>{inboxOwnerLabel(item)}</td>
                       <td>
                         <span className={`badge ${item.active ? "ok" : ""}`}>{inboxStatusLabel(item.active)}</span>
@@ -106,18 +180,34 @@ export function EmailPage({ config, live, action, busy, onCreate, onListInboxes,
                       <td>{item.messages.length}</td>
                       <td>{formatActivationWhen(item.createdAt)}</td>
                       <td>
-                        <button
-                          className="btn secondary"
-                          type="button"
-                          disabled={busy || !item.active}
-                          onClick={() => {
-                            setSelected(item.address);
-                            setTab("messages");
-                            void onOpenInbox(item.address);
-                          }}
-                        >
-                          Mensagens
-                        </button>
+                        <div className="row">
+                          <button
+                            className="btn secondary"
+                            type="button"
+                            disabled={busy}
+                            onClick={() => {
+                              setSelected(item.address);
+                              setTab("messages");
+                              void onOpenInbox(item.address);
+                            }}
+                          >
+                            Mensagens
+                          </button>
+                          <button
+                            className="btn secondary"
+                            type="button"
+                            disabled={busy}
+                            onClick={() => {
+                              if (selected === item.address) {
+                                setSelected("");
+                                setTab("inboxes");
+                              }
+                              void onDelete(item.address);
+                            }}
+                          >
+                            Excluir
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -131,9 +221,9 @@ export function EmailPage({ config, live, action, busy, onCreate, onListInboxes,
         <div className="card">
           {action ? <div className={action.ok ? "status ok" : "status err"}>{action.mensagem}</div> : null}
           <strong>{selected || "Mensagens"}</strong>
-          <p className="muted">Atualiza a cada 5s. O que chegar fica no histórico local, mesmo se a API esquecer depois.</p>
+          <p className="muted">Atualiza a cada 8s. O que chegar fica no histórico local, mesmo se a API esquecer depois.</p>
           {messages.length === 0 ? (
-            <p className="muted">Nenhuma mensagem ainda. Peça o e-mail na Meta e aguarde o GET.</p>
+            <p className="muted">Nenhuma mensagem ainda. Peça o e-mail na Meta e aguarde.</p>
           ) : (
             <div className="activations-wrap">
               <table className="history-table activations-table">
@@ -142,6 +232,7 @@ export function EmailPage({ config, live, action, busy, onCreate, onListInboxes,
                     <th>De</th>
                     <th>Assunto</th>
                     <th>Prévia</th>
+                    <th>Link</th>
                     <th>Quando</th>
                   </tr>
                 </thead>
@@ -151,6 +242,7 @@ export function EmailPage({ config, live, action, busy, onCreate, onListInboxes,
                       <td>{message.from || "—"}</td>
                       <td>{message.subject || "(sem assunto)"}</td>
                       <td>{message.intro || "—"}</td>
+                      <td>{message.link ? "confirmação" : "—"}</td>
                       <td>{formatActivationWhen(message.receivedAt || message.seenAt)}</td>
                     </tr>
                   ))}

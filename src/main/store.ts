@@ -15,6 +15,12 @@ function safeParse<T>(raw: string, fallback: T): T {
   }
 }
 
+function stripLegacyAdsPowerKey(adspower: AppConfig["adspower"] & { apiKey?: string }): AppConfig["adspower"] {
+  const next = { ...adspower };
+  delete next.apiKey;
+  return next;
+}
+
 export class LocalStore {
   constructor(private readonly paths: StorePaths) {
     mkdirSync(paths.root, { recursive: true });
@@ -35,8 +41,8 @@ export class LocalStore {
         ...DEFAULT_CONFIG,
         ...parsed,
         sms: { ...DEFAULT_CONFIG.sms, ...parsed.sms },
-        email: { ...DEFAULT_CONFIG.email, ...parsed.email },
-        adspower: { ...DEFAULT_CONFIG.adspower, ...parsed.adspower },
+        email: { ...DEFAULT_CONFIG.email, ...parsed.email, provider: "22.do" },
+        adspower: stripLegacyAdsPowerKey({ ...DEFAULT_CONFIG.adspower, ...parsed.adspower }),
         update: { ...DEFAULT_CONFIG.update, ...parsed.update },
         farm: { ...DEFAULT_CONFIG.farm, ...parsed.farm },
         empresas: (parsed.empresas ?? []).map((item) => ({

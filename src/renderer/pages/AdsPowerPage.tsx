@@ -26,6 +26,7 @@ export function AdsPowerPage({ config, onChange, live, profiles, listError, onLi
       <h1>AdsPower</h1>
       <p className="muted">
         A badge e a tabela acompanham a API local sem martelar o AdsPower. O Facebook nunca carrega nesta janela.
+        No AdsPower, API local → desligue a autenticação por API key. Sem isso o /status falha; o farm não usa chave.
       </p>
       <div className="form-panel">
         <div className={`live-badge ${connected ? "ok" : live ? "err" : ""}`}>{live ? live.mensagem : "Checando AdsPower…"}</div>
@@ -37,15 +38,6 @@ export function AdsPowerPage({ config, onChange, live, profiles, listError, onLi
             maxLength={FIELD_LIMITS.url}
             value={config.adspower.baseUrl}
             onChange={(baseUrl) => onChange({ ...config, adspower: { ...config.adspower, baseUrl } })}
-          />
-          <Field
-            id="ads-key"
-            label="API key"
-            kind="secret"
-            maxLength={FIELD_LIMITS.secret}
-            type="password"
-            value={config.adspower.apiKey}
-            onChange={(apiKey) => onChange({ ...config, adspower: { ...config.adspower, apiKey } })}
           />
         </div>
       </div>

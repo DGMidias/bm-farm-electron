@@ -1,4 +1,13 @@
-import type { EmpresaCard } from "./empresa";
+import { digits, type EmpresaCard } from "./empresa";
+import { nationalPhone } from "./sms-view";
+
+/** Telefone comercial da Meta: (NN) NNNNN-NNNN. */
+export function formatBrMobilePhone(phone: string): string {
+  const n = digits(nationalPhone(phone));
+  if (n.length === 11) return `(${n.slice(0, 2)}) ${n.slice(2, 7)}-${n.slice(7)}`;
+  if (n.length === 10) return `(${n.slice(0, 2)}) ${n.slice(2, 6)}-${n.slice(6)}`;
+  return phone.trim();
+}
 
 const SMALL = new Set(["a", "as", "o", "os", "de", "da", "do", "das", "dos", "del", "e", "em"]);
 
@@ -32,6 +41,7 @@ export function formatEmpresaFields<T extends Partial<EmpresaCard>>(fields: T): 
   if (next.complemento) next.complemento = titleName(next.complemento);
   if (next.cidade) next.cidade = titleName(next.cidade);
   if (next.estado) next.estado = next.estado.trim().toLocaleUpperCase("pt-BR");
+  if (next.telefone) next.telefone = formatBrMobilePhone(next.telefone);
   if (next.site) next.site = next.site.trim();
   return next;
 }

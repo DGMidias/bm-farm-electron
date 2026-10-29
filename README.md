@@ -19,7 +19,7 @@ npm run test:harness
 ## Menus
 
 1. SMS — API numero-virtual
-2. Email (mail.tm) — temporário na criação do portfólio; a listagem associa empresa/perfil AdsPower
+2. Email (22.do) — temporário na criação do portfólio; a listagem associa empresa/perfil AdsPower; token da dashboard no painel
 3. AdsPower — logo no menu; badge testa a API local a cada 5s; com a conexão ok, lista os perfis do AdsPower
 4. Farm de BM — ícone no menu; PDF do comprovante CNPJ preenche o card
 5. Histórico — ícone no menu; logs locais sem segredo

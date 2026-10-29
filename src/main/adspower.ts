@@ -28,6 +28,10 @@ export function isAdsPowerRateLimit(message: string): boolean {
   return /too many request/i.test(message);
 }
 
+export function isAdsPowerMissingProfile(message: string): boolean {
+  return /does not exist|failed/i.test(message);
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -65,14 +69,12 @@ export async function adspowerRequest(
     const wait = REQUEST_GAP_MS - (Date.now() - lastRequestAt);
     if (wait > 0) await sleep(wait);
     lastRequestAt = Date.now();
-    const headers: Record<string, string> = {};
-    if (config.apiKey) headers.Authorization = `Bearer ${config.apiKey}`;
-    const response = await fetch(url, { headers });
+    const response = await fetch(url);
     const payload = (await response.json()) as { code?: number; msg?: string; data?: unknown };
     if (payload.code !== 0) {
       const msg = payload.msg || "erro AdsPower";
-      if (/api-key/i.test(msg) && !config.apiKey) {
-        throw new Error("AdsPower exige API key.");
+      if (/api-key/i.test(msg)) {
+        throw new Error("AdsPower ainda pede API key. Desative a autenticação da API local no AdsPower e tente de novo.");
       }
       if (/disorderedid/i.test(msg)) {
         throw new Error("ID do perfil inválido. Use serial_number (2) ou user_id.");
@@ -81,7 +83,7 @@ export async function adspowerRequest(
         log("warn", "adspower", `${path} → ${msg}`);
         throw new Error(msg);
       }
-      if (!isPaidAdsPowerListError(msg) && !(path.includes("/browser/active") && /failed/i.test(msg))) {
+      if (!isPaidAdsPowerListError(msg) && !(path.includes("/browser/active") && isAdsPowerMissingProfile(msg))) {
         log("error", "adspower", `${path} → ${msg}`);
       }
       throw new Error(msg);
@@ -105,7 +107,11 @@ export async function testAdsPower(config: AdsPowerConfig): Promise<ConnectionRe
   }
 }
 
-async function fetchAdsPowerProfiles(config: AdsPowerConfig): Promise<AdsPowerProfile[]> {
+function numericHints(hints: string[]): string[] {
+  return [...new Set(hints.map((item) => item.trim()).filter((item) => /^\d+$/.test(item)))];
+}
+
+async function fetchAdsPowerProfiles(config: AdsPowerConfig, hints: string[]): Promise<AdsPowerProfile[]> {
   if (!paidListBlocked) {
     try {
       const data = (await adspowerRequest(config, "/api/v1/user/list", { page: 1, page_size: 100 })) as {
@@ -128,24 +134,24 @@ async function fetchAdsPowerProfiles(config: AdsPowerConfig): Promise<AdsPowerPr
     }
   }
   try {
-    return rememberProfiles(await listProfilesBySerial(config));
+    return rememberProfiles(await listProfilesBySerial(config, hints));
   } catch (error) {
     if (cachedProfiles?.list) return cachedProfiles.list;
     throw error;
   }
 }
 
-export async function listAdsPowerProfiles(config: AdsPowerConfig): Promise<AdsPowerProfile[]> {
+export async function listAdsPowerProfiles(config: AdsPowerConfig, hints: string[] = []): Promise<AdsPowerProfile[]> {
   const fresh = cachedIfFresh();
   if (fresh) return fresh;
   if (inflightList) return inflightList;
-  inflightList = fetchAdsPowerProfiles(config).finally(() => {
+  inflightList = fetchAdsPowerProfiles(config, hints).finally(() => {
     inflightList = null;
   });
   return inflightList;
 }
 
-async function listProfilesBySerial(config: AdsPowerConfig): Promise<AdsPowerProfile[]> {
+async function listProfilesBySerial(config: AdsPowerConfig, hints: string[]): Promise<AdsPowerProfile[]> {
   if (knownSerials.length) {
     const refreshed: AdsPowerProfile[] = [];
     for (const serial of knownSerials) {
@@ -155,16 +161,28 @@ async function listProfilesBySerial(config: AdsPowerConfig): Promise<AdsPowerPro
     return refreshed;
   }
   const found: AdsPowerProfile[] = [];
+  const seen = new Set<string>();
   let misses = 0;
   for (let serial = 1; serial <= SERIAL_SCAN_LIMIT; serial++) {
-    const profile = await readSerialProfile(config, String(serial));
+    const id = String(serial);
+    const profile = await readSerialProfile(config, id);
     if (profile) {
       found.push(profile);
+      if (profile.serial) seen.add(profile.serial);
       misses = 0;
       continue;
     }
+    if (found.length === 0) continue;
     misses += 1;
     if (misses >= SERIAL_MISS_LIMIT) break;
+  }
+  for (const hint of numericHints(hints)) {
+    if (seen.has(hint)) continue;
+    const profile = await readSerialProfile(config, hint);
+    if (profile) {
+      found.push(profile);
+      if (profile.serial) seen.add(profile.serial);
+    }
   }
   knownSerials = found.map((item) => item.serial).filter((item): item is string => Boolean(item));
   return found;

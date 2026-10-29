@@ -1,4 +1,5 @@
 import {
+  activationOwnerLabel,
   canCancelActivation,
   defaultSmsOption,
   diffActivationChanges,
@@ -20,6 +21,7 @@ import type { ConnectionResult, SmsActivation, SmsConfig, SmsService, SmsService
 import { log, logError } from "./log";
 
 export {
+  activationOwnerLabel,
   canCancelActivation,
   defaultSmsOption,
   diffActivationChanges,

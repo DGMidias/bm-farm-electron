@@ -3,15 +3,26 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirName, downloadsPath, joinPath, modKey, pdfPickerPath, platformId, userDataPath } from "@harness/compat";
 import { DEFAULT_DDD, isBrDdd } from "@shared/ddd";
-import { validateEmpresa, validateFarmStart, type EmpresaCard } from "@shared/empresa";
+import { mergeEmpresaBusinessIds, validateEmpresa, validateFarmStart, withEmpresaBusinessId, type EmpresaCard } from "@shared/empresa";
+import { formatBrMobilePhone } from "@shared/empresa-format";
 import { clampBatchSize } from "@shared/farm-etapas";
 import type { AppConfig, FarmEvent, HistoryEvent, HumanPause } from "@shared/types";
 import { ADSPOWER_PROBE_URL, listAdsPowerProfiles, testAdsPower } from "./adspower";
 import { FarmEngine, loadPageMap } from "./engine";
 import { FarmOrchestrator } from "./farm-orchestrator";
-import { createInbox, probeInbox, rememberInbox, refreshInboxMessages, testEmail } from "./mail-tm";
+import { findCompanyInbox, forgetInbox, mergeKnownInboxes } from "@shared/mail-view";
+import {
+  createInbox,
+  emailReady,
+  normalizeEmailBase,
+  probeInbox,
+  rememberInbox,
+  refreshInboxMessages,
+  sanitizeEmailToken,
+  testEmail,
+} from "./mail-22do";
 import { configureLogger, listLogs, log, logError, onLog } from "./log";
-import { cancelSmsActivation, createSmsNumber, listSmsActivations, listSmsServices, normalizeDdd, normalizeSmsBase, persistActivationSnapshot, readSmsActivation, rememberActivation, sanitizeSmsKey, testSms } from "./sms";
+import { cancelSmsActivation, createSmsNumber, listSmsActivations, listSmsServices, normalizeDdd, normalizeSmsBase, persistActivationSnapshot, readSmsActivation, rememberActivation, sanitizeSmsKey, smsReady, testSms } from "./sms";
 import { LocalStore } from "./store";
 import { readEmpresaDocument } from "./pdf-empresa";
 import { checkUpdate, downloadAndInstall, fetchLatest } from "./updater";
@@ -21,14 +32,13 @@ const repoRoot = joinPath(mainDir, "..", "..");
 const store = new LocalStore({ root: app.isPackaged ? userDataPath() : joinPath(repoRoot, "userData") });
 async function persistCompanyInbox(card: Pick<EmpresaCard, "id" | "razao_social" | "adspower_profile">) {
   const config = store.readConfig();
+  if (!emailReady(config.email)) throw new Error("22.do sem URL ou token.");
   const inbox = await createInbox(config.email, {
     empresaId: card.id,
     razaoSocial: card.razao_social,
     adspowerProfile: card.adspower_profile,
   });
   config.email.lastAddress = inbox.address;
-  config.email.lastToken = inbox.token;
-  config.email.password = inbox.password;
   config.email.knownInboxes = rememberInbox(config.email.knownInboxes, inbox);
   config.empresas = (config.empresas ?? []).map((item) =>
     item.id === card.id ? { ...item, email_comercial: inbox.address } : item,
@@ -37,8 +47,65 @@ async function persistCompanyInbox(card: Pick<EmpresaCard, "id" | "razao_social"
   return inbox;
 }
 
-const engine = new FarmEngine(repoRoot, loadPageMap(repoRoot), persistCompanyInbox);
-const orchestrator = new FarmOrchestrator(repoRoot, persistCompanyInbox);
+function persistCompanyBusinessId(card: Pick<EmpresaCard, "id"> & { business_id?: string }) {
+  const config = store.readConfig();
+  config.empresas = withEmpresaBusinessId(config.empresas ?? [], card.id, card.business_id ?? "");
+  store.writeConfig(config);
+}
+
+async function persistCompanyNumber(card: Pick<EmpresaCard, "id" | "razao_social" | "adspower_profile">) {
+  const config = store.readConfig();
+  if (!smsReady(config.sms)) throw new Error("Número Virtual sem URL ou API key.");
+  const activation = await createSmsNumber(config.sms);
+  const owned = {
+    ...activation,
+    empresaId: card.id,
+    razaoSocial: card.razao_social,
+    adspowerProfile: card.adspower_profile,
+  };
+  const remembered = rememberActivation(config.sms.knownActivations, owned);
+  const live = await listSmsActivations({ ...config.sms, knownActivations: remembered }).catch(() => [owned]);
+  const snapshot = persistActivationSnapshot(
+    { ...config.sms, knownActivations: remembered },
+    owned.id ? [owned, ...live] : live,
+  );
+  config.sms.lastActivationId = owned.id;
+  config.sms.lastPhone = owned.phone;
+  config.sms.knownActivations = snapshot.knownActivations;
+  config.sms.activationChanges = snapshot.activationChanges;
+  const phone = formatBrMobilePhone(owned.phone);
+  config.empresas = (config.empresas ?? []).map((item) => (item.id === card.id ? { ...item, telefone: phone } : item));
+  store.writeConfig(config);
+  return { phone };
+}
+
+async function readCompanyInbox(card: Pick<EmpresaCard, "id" | "email_comercial" | "razao_social" | "adspower_profile">) {
+  const config = store.readConfig();
+  if (!emailReady(config.email)) throw new Error("22.do sem URL ou token.");
+  const found = findCompanyInbox(config.email.knownInboxes, card);
+  if (!found) throw new Error("Sem caixa 22.do desta empresa.");
+  const refreshed = await refreshInboxMessages(config.email, found);
+  config.email.lastAddress = refreshed.address;
+  config.email.knownInboxes = rememberInbox(config.email.knownInboxes, refreshed);
+  store.writeConfig(config);
+  return refreshed;
+}
+
+const engine = new FarmEngine(
+  repoRoot,
+  loadPageMap(repoRoot),
+  persistCompanyInbox,
+  persistCompanyNumber,
+  readCompanyInbox,
+  persistCompanyBusinessId,
+);
+const orchestrator = new FarmOrchestrator(
+  repoRoot,
+  persistCompanyInbox,
+  persistCompanyNumber,
+  readCompanyInbox,
+  persistCompanyBusinessId,
+);
 
 function createWindow(): void {
   const window = new BrowserWindow({
@@ -82,8 +149,11 @@ function broadcastLog(entry: unknown): void {
 
 function resolveEmpresa(empresaId: unknown, maybeCard: unknown, config: AppConfig): EmpresaCard | undefined {
   const draft = maybeCard as EmpresaCard | undefined;
-  if (draft && typeof draft === "object" && draft.id === empresaId) return draft;
-  return config.empresas.find((item) => item.id === empresaId);
+  const fromStore = config.empresas.find((item) => item.id === empresaId);
+  if (draft && typeof draft === "object" && draft.id === empresaId) {
+    return mergeEmpresaBusinessIds(fromStore ? [fromStore] : [], [draft])[0];
+  }
+  return fromStore;
 }
 
 function handle(channel: string, fn: (...args: unknown[]) => unknown): void {
@@ -119,6 +189,16 @@ app.whenReady().then(() => {
     if (next.sms.countryCode.trim().toUpperCase() === "BRA") next.sms.countryCode = "BR";
     const ddd = normalizeDdd(next.sms.ddd);
     next.sms.ddd = isBrDdd(ddd) ? ddd : DEFAULT_DDD;
+    const previous = store.readConfig();
+    next.email.token = sanitizeEmailToken(next.email.token);
+    next.email.baseUrl = normalizeEmailBase(next.email.baseUrl);
+    next.email.provider = "22.do";
+    if (previous.email.token !== next.email.token) {
+      next.email.lastBearer = "";
+      next.email.lastBearerExpire = 0;
+    }
+    next.email.knownInboxes = mergeKnownInboxes(previous.email.knownInboxes, next.email.knownInboxes);
+    next.empresas = mergeEmpresaBusinessIds(previous.empresas, next.empresas);
     store.writeConfig(next);
     return store.readConfig();
   });
@@ -191,28 +271,50 @@ app.whenReady().then(() => {
     return result;
   });
   handle("adspower:test", () => testAdsPower(store.readConfig().adspower));
-  handle("adspower:profiles", () => listAdsPowerProfiles(store.readConfig().adspower));
+  handle("adspower:profiles", () => {
+    const config = store.readConfig();
+    return listAdsPowerProfiles(
+      config.adspower,
+      config.empresas.map((card) => card.adspower_profile),
+    );
+  });
   handle("adspower:probe", () => {
     const config = store.readConfig();
     return engine.startProfile(config.adspower, config.adspower.testProfile, ADSPOWER_PROBE_URL);
   });
-  handle("email:test", () => testEmail());
+  handle("email:test", async () => {
+    const config = store.readConfig();
+    const result = await testEmail(config.email);
+    store.writeConfig(config);
+    return result;
+  });
   handle("email:create", async () => {
     const config = store.readConfig();
+    if (!emailReady(config.email)) throw new Error("22.do sem URL ou token.");
     const inbox = await createInbox(config.email);
     config.email.lastAddress = inbox.address;
-    config.email.lastToken = inbox.token;
-    config.email.password = inbox.password;
     config.email.knownInboxes = rememberInbox(config.email.knownInboxes, inbox);
     store.writeConfig(config);
     log("info", "email", `caixa ${inbox.address}`);
     return inbox;
   });
+  handle("email:delete", async (address) => {
+    const wanted = String(address ?? "").trim();
+    if (!wanted) throw new Error("Informe a caixa para excluir.");
+    const config = store.readConfig();
+    config.email.knownInboxes = forgetInbox(config.email.knownInboxes, wanted);
+    if (config.email.lastAddress === wanted) {
+      config.email.lastAddress = config.email.knownInboxes[0]?.address ?? "";
+    }
+    store.writeConfig(config);
+    log("info", "email", `excluiu ${wanted}`);
+    return config.email.knownInboxes;
+  });
   handle("email:list-inboxes", async () => {
     const config = store.readConfig();
     const next = [];
     for (const inbox of config.email.knownInboxes ?? []) {
-      next.push(await probeInbox(inbox));
+      next.push(await probeInbox(config.email, inbox));
     }
     config.email.knownInboxes = next;
     store.writeConfig(config);
@@ -220,21 +322,21 @@ app.whenReady().then(() => {
   });
   handle("email:list", async (address) => {
     const config = store.readConfig();
+    if (!emailReady(config.email)) throw new Error("22.do sem URL ou token.");
     const wanted = String(address || config.email.lastAddress || "").trim();
     const current = (config.email.knownInboxes ?? []).find((item) => item.address === wanted);
-    if (!current?.token && !config.email.lastToken) return [];
+    if (!wanted) return [];
     const inbox = current ?? {
       id: wanted,
       address: wanted,
-      token: config.email.lastToken,
-      password: config.email.password,
+      token: "",
+      password: "",
       createdAt: new Date().toISOString(),
       active: true,
       messages: [],
     };
-    const refreshed = await refreshInboxMessages(inbox);
+    const refreshed = await refreshInboxMessages(config.email, inbox);
     config.email.lastAddress = refreshed.address;
-    config.email.lastToken = refreshed.token;
     config.email.knownInboxes = rememberInbox(config.email.knownInboxes, refreshed);
     store.writeConfig(config);
     return refreshed.messages;
@@ -294,16 +396,20 @@ app.whenReady().then(() => {
     const cards = Array.isArray(maybeCards) && maybeCards.length ? (maybeCards as EmpresaCard[]) : config.empresas;
     const ads = await testAdsPower(config.adspower);
     if (!ads.ok) throw new Error(ads.mensagem || "AdsPower local indisponível.");
-    const profiles = await listAdsPowerProfiles(config.adspower).catch(() => []);
+    const profiles = await listAdsPowerProfiles(
+      config.adspower,
+      cards.map((card) => card.adspower_profile),
+    ).catch(() => []);
     const known = profiles.flatMap((item) => [item.userId, item.serial].filter((value): value is string => Boolean(value)));
     const errors = validateFarmStart(cards, known);
     if (errors.length) throw new Error(errors[0]);
     const batch = clampBatchSize(Number(maybeBatch ?? config.farm.batchSize), cards.length);
-    config.empresas = cards;
+    const merged = mergeEmpresaBusinessIds(config.empresas, cards);
+    config.empresas = merged;
     config.farm.started = true;
     config.farm.batchSize = batch;
     store.writeConfig(config);
-    for (const card of cards) {
+    for (const card of merged) {
       store.appendHistory({
         id: crypto.randomUUID(),
         timestamp: new Date().toISOString(),
@@ -316,7 +422,7 @@ app.whenReady().then(() => {
         mensagem: "Farm iniciado (portfólio).",
       });
     }
-    return orchestrator.start(config, cards, batch);
+    return orchestrator.start(config, merged, batch);
   });
   handle("farm:stop", () => orchestrator.stop(store.readConfig().adspower));
   handle("farm:report", (empresaId) => orchestrator.report(String(empresaId), store.readConfig().adspower));

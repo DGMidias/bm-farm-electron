@@ -79,7 +79,7 @@ describe("comprovante CNPJ", () => {
     expect(fields.razao_social).toBe("Vesol Energia Solar Ltda");
     expect(fields.cnpj).toBe("51.449.498/0001-05");
     expect(fields.endereco).toBe("R Jose Theodoro Ribeiro, 2723");
-    expect(fields.complemento).toBeUndefined();
+    expect(fields.complemento).toBe("Ilha da Figueira");
     expect(fields.cidade).toBe("Jaragua do Sul");
     expect(fields.estado).toBe("SC");
     expect(fields.cep).toBe("89.258-001");
@@ -152,6 +152,7 @@ describe("comprovante CNPJ", () => {
     expect(fields.razao_social).toBe("Vesol Energia Solar Ltda");
     expect(fields.cnpj).toBe("51.449.498/0001-05");
     expect(fields.endereco).toBe("R Jose Theodoro Ribeiro, 2723");
+    expect(fields.complemento).toBe("Ilha da Figueira");
     expect(fields.cidade).toBe("Jaragua do Sul");
     expect(fields.estado).toBe("SC");
     expect(fields.email_comercial).toBe("rafaela@vesol.com.br");
@@ -168,12 +169,12 @@ describe("comprovante CNPJ", () => {
     expect(fields.cnpj).not.toBe("00.332.959/9474-23");
   });
 
-  it("lê o comprovante 2026 da Receita, inclusive complemento preenchido", () => {
+  it("lê o comprovante 2026 da Receita e usa o bairro na linha 2", () => {
     const fields = parseCnpjComprovante(FORALLZ_TEXT);
     expect(fields.razao_social).toBe("Felipi Estevao Matos da Trindade 08777435680");
     expect(fields.cnpj).toBe("46.971.233/0001-32");
     expect(fields.endereco).toBe("Av Leite de Castro, 1679");
-    expect(fields.complemento).toBe("Apt 202");
+    expect(fields.complemento).toBe("Fabricas");
     expect(fields.cidade).toBe("Sao Joao del Rei");
     expect(fields.estado).toBe("MG");
     expect(fields.cep).toBe("36.301-182");

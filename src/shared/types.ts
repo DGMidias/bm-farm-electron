@@ -17,16 +17,17 @@ export interface SmsConfig {
 }
 
 export interface EmailConfig {
-  provider: "mail.tm";
-  password: string;
+  provider: "22.do";
+  baseUrl: string;
+  token: string;
+  lastBearer: string;
+  lastBearerExpire: number;
   lastAddress: string;
-  lastToken: string;
   knownInboxes: MailInbox[];
 }
 
 export interface AdsPowerConfig {
   baseUrl: string;
-  apiKey: string;
   testProfile: string;
 }
 
@@ -156,6 +157,8 @@ export interface MailMessage {
   link?: string;
 }
 
+export type MailKind = "gmail" | "outlook" | "hotmail" | "premium";
+
 export interface MailInbox {
   id: string;
   address: string;
@@ -167,6 +170,7 @@ export interface MailInbox {
   empresaId?: string;
   razaoSocial?: string;
   adspowerProfile?: string;
+  kind?: MailKind;
   messages: MailMessage[];
 }
 
@@ -187,6 +191,9 @@ export interface SmsActivation {
   serviceName?: string;
   optionLabel?: string;
   apiId?: string;
+  empresaId?: string;
+  razaoSocial?: string;
+  adspowerProfile?: string;
   messages: SmsMessage[];
 }
 
@@ -239,15 +246,16 @@ export const DEFAULT_CONFIG: AppConfig = {
     activationChanges: [],
   },
   email: {
-    provider: "mail.tm",
-    password: "",
+    provider: "22.do",
+    baseUrl: "https://22.do/api/v2",
+    token: "",
+    lastBearer: "",
+    lastBearerExpire: 0,
     lastAddress: "",
-    lastToken: "",
     knownInboxes: [],
   },
   adspower: {
     baseUrl: "http://127.0.0.1:50325",
-    apiKey: "",
     testProfile: "",
   },
   update: {

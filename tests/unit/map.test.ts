@@ -167,4 +167,42 @@ describe("mapa de páginas", () => {
       ).id,
     ).toBe("portfolio.settings_users");
   });
+
+  it("reconhece o modal de detalhes da empresa", () => {
+    expect(
+      detectScreen(
+        map,
+        snapshotFromTexts(
+          "https://business.facebook.com/latest/settings/business_info?business_id=1618424756678450",
+          "Editar detalhes da empresa",
+          [
+            "Editar detalhes da empresa",
+            "Razão social da empresa",
+            "País",
+            "Identificação fiscal (EIN)",
+            "Salvar",
+          ],
+        ),
+      ).id,
+    ).toBe("empresa.details_form");
+    expect(
+      detectScreen(
+        map,
+        snapshotFromTexts(
+          "https://business.facebook.com/latest/settings/business_info?business_id=1618424756678450",
+          "Meta Business Suite",
+          [
+            "Informações do portfólio empresarial",
+            "Editar",
+            "Detalhes da empresa",
+            "Editar",
+            "Razão social da empresa",
+            "Sem nome",
+            "Endereço",
+            "Sem endereço",
+          ],
+        ),
+      ).id,
+    ).toBe("empresa.info");
+  });
 });

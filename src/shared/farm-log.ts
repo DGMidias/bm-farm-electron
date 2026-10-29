@@ -77,7 +77,26 @@ export function formatEtapaSkippedLog(input: {
   return `Etapa ${input.etapa} já concluída · pulando · ${name} · ${idPart}${input.url ? ` · ${input.url}` : ""}`;
 }
 
+export function formatEmpresaFilledLog(input: {
+  razaoSocial: string;
+  businessId?: string;
+  keys: string[];
+}): string {
+  const idPart = input.businessId ? `business_id=${input.businessId}` : "sem business_id";
+  return `Preenchendo empresa · ${input.keys.length} campos · ${input.razaoSocial} · ${idPart}`;
+}
+
 export function formatTempEmailLog(input: { address: string; razaoSocial: string; profile: string }): string {
   const short = input.razaoSocial.trim().split(/\s+/)[0] || input.razaoSocial;
   return `E-mail temporário · ${input.address} · ${short} · perfil ${input.profile}`;
+}
+
+export function formatVirtualPhoneLog(input: { phone: string; razaoSocial: string; profile: string }): string {
+  const short = input.razaoSocial.trim().split(/\s+/)[0] || input.razaoSocial;
+  return `Número virtual · ${input.phone} · ${short} · perfil ${input.profile}`;
+}
+
+export function formatEmailConfirmLog(input: { address: string; url: string; razaoSocial: string; profile: string }): string {
+  const short = input.razaoSocial.trim().split(/\s+/)[0] || input.razaoSocial;
+  return `Confirmando e-mail · ${input.address} · ${short} · perfil ${input.profile} · ${input.url}`;
 }
