@@ -16,6 +16,7 @@ const api = {
   cancelSmsNumber: (activationId: string) => ipcRenderer.invoke("sms:cancel", activationId),
   testEmail: () => ipcRenderer.invoke("email:test"),
   testAdsPower: () => ipcRenderer.invoke("adspower:test"),
+  testOpenAi: () => ipcRenderer.invoke("openai:test"),
   listAdsPowerProfiles: () => ipcRenderer.invoke("adspower:profiles"),
   probeAdsPower: () => ipcRenderer.invoke("adspower:probe"),
   createInbox: () => ipcRenderer.invoke("email:create"),

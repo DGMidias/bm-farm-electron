@@ -2,6 +2,12 @@
 
 Formato: data · o que mudou · por que · o que não desfazer.
 
+## 2026-10-30 — Menu OpenAI na sidebar
+
+- **O quê:** item OpenAI depois do AdsPower. A chave e a URL base ficam no `userData/config.json`. O main testa `GET /models` e tenta uso/custo da org. Badge e `!` na nav se falhar. Sem botão Testar. Crédito só aparece se a chave tiver permissão de admin.
+- **Por quê:** o farm vai usar o agente depois; esta tela só prova a conexão e mostra models/rate/saldo.
+- **Não desfazer:** o farm ainda não chama o modelo. Sem Vision. Sem logar a key. Sem facebook.com no Electron.
+
 ## 2026-10-29 — Depois de Confirmar, etapa 1 fecha sem seletor
 
 - **O quê:** após o assistente, a etapa 1 espera `/latest/settings/` e lê a razão no heading/toolbar. Não abre o seletor. InnerText vazio na settings recém-aberta não conta como “não criou”.

@@ -24,6 +24,7 @@ import {
 import { configureLogger, listLogs, log, logError, onLog } from "./log";
 import { cancelSmsActivation, createSmsNumber, listSmsActivations, listSmsServices, normalizeDdd, normalizeSmsBase, persistActivationSnapshot, readSmsActivation, rememberActivation, sanitizeSmsKey, smsReady, testSms } from "./sms";
 import { LocalStore } from "./store";
+import { normalizeOpenAiBase, sanitizeOpenAiKey, testOpenAi } from "./openai";
 import { readEmpresaDocument } from "./pdf-empresa";
 import { checkUpdate, downloadAndInstall, fetchLatest } from "./updater";
 
@@ -199,6 +200,10 @@ app.whenReady().then(() => {
     }
     next.email.knownInboxes = mergeKnownInboxes(previous.email.knownInboxes, next.email.knownInboxes);
     next.empresas = mergeEmpresaBusinessIds(previous.empresas, next.empresas);
+    next.openai = {
+      apiKey: sanitizeOpenAiKey(next.openai?.apiKey ?? ""),
+      baseUrl: normalizeOpenAiBase(next.openai?.baseUrl ?? ""),
+    };
     store.writeConfig(next);
     return store.readConfig();
   });
@@ -271,6 +276,7 @@ app.whenReady().then(() => {
     return result;
   });
   handle("adspower:test", () => testAdsPower(store.readConfig().adspower));
+  handle("openai:test", () => testOpenAi(store.readConfig().openai));
   handle("adspower:profiles", () => {
     const config = store.readConfig();
     return listAdsPowerProfiles(

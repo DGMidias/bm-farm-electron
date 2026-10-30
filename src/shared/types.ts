@@ -1,6 +1,6 @@
 import type { EmpresaCard } from "./empresa";
 
-export type MenuId = "sms" | "email" | "adspower" | "farm" | "history";
+export type MenuId = "sms" | "email" | "adspower" | "openai" | "farm" | "history";
 
 export interface SmsConfig {
   baseUrl: string;
@@ -29,6 +29,11 @@ export interface EmailConfig {
 export interface AdsPowerConfig {
   baseUrl: string;
   testProfile: string;
+}
+
+export interface OpenAiConfig {
+  apiKey: string;
+  baseUrl: string;
 }
 
 export interface AdsPowerProfile {
@@ -60,6 +65,7 @@ export interface AppConfig {
   sms: SmsConfig;
   email: EmailConfig;
   adspower: AdsPowerConfig;
+  openai: OpenAiConfig;
   update: UpdateConfig;
   farm: FarmUiConfig;
   empresas: EmpresaCard[];
@@ -257,6 +263,10 @@ export const DEFAULT_CONFIG: AppConfig = {
   adspower: {
     baseUrl: "http://127.0.0.1:50325",
     testProfile: "",
+  },
+  openai: {
+    apiKey: "",
+    baseUrl: "https://api.openai.com/v1",
   },
   update: {
     latestUrl: "",

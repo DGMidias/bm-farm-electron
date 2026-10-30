@@ -9,10 +9,12 @@ import { EmailPage } from "./pages/EmailPage";
 import { FarmPage } from "./pages/FarmPage";
 import { FarmRunPage } from "./pages/FarmRunPage";
 import { HistoryPage } from "./pages/HistoryPage";
+import { OpenAiPage } from "./pages/OpenAiPage";
 import { SmsPage } from "./pages/SmsPage";
 import numeroVirtualLogo from "./assets/numero-virtual.png";
 import email22doLogo from "./assets/22do.svg";
 import adsPowerLogo from "./assets/adspower.svg";
+import openAiLogo from "./assets/openai.svg";
 import farmLogo from "./assets/farm.svg";
 import historyLogo from "./assets/history.svg";
 
@@ -20,6 +22,7 @@ const MENUS: Array<{ id: MenuId; label: string; icon?: string }> = [
   { id: "sms", label: "Número Virtual", icon: numeroVirtualLogo },
   { id: "email", label: "Email (22.do)", icon: email22doLogo },
   { id: "adspower", label: "AdsPower", icon: adsPowerLogo },
+  { id: "openai", label: "OpenAI", icon: openAiLogo },
   { id: "farm", label: "Farm de BM", icon: farmLogo },
   { id: "history", label: "Histórico", icon: historyLogo },
 ];
@@ -37,6 +40,7 @@ export function App() {
   const [emailResult, setEmailResult] = useState<ConnectionResult>();
   const [emailAction, setEmailAction] = useState<ConnectionResult>();
   const [adsResult, setAdsResult] = useState<ConnectionResult>();
+  const [openAiResult, setOpenAiResult] = useState<ConnectionResult>();
   const [adsProfiles, setAdsProfiles] = useState<AdsPowerProfile[]>([]);
   const [adsListError, setAdsListError] = useState<string>();
   const [smsServices, setSmsServices] = useState<SmsService[]>([]);
@@ -107,6 +111,10 @@ export function App() {
       const result = await desktop()?.testEmail();
       if (!stop && result) setEmailResult(result);
     };
+    const pollOpenAi = async () => {
+      const result = await desktop()?.testOpenAi?.();
+      if (!stop && result) setOpenAiResult(result);
+    };
     const pollAds = async () => {
       if (adsRunning) return;
       adsRunning = true;
@@ -129,7 +137,7 @@ export function App() {
       }
     };
     const poll = async () => {
-      await Promise.all([pollSms(), pollEmail(), pollAds()]);
+      await Promise.all([pollSms(), pollEmail(), pollAds(), pollOpenAi()]);
     };
     void poll();
     const timer = window.setInterval(() => void poll(), 8000);
@@ -137,7 +145,15 @@ export function App() {
       stop = true;
       window.clearInterval(timer);
     };
-  }, [config.sms.apiKey, config.sms.baseUrl, config.email.token, config.email.baseUrl, config.adspower.baseUrl]);
+  }, [
+    config.sms.apiKey,
+    config.sms.baseUrl,
+    config.email.token,
+    config.email.baseUrl,
+    config.adspower.baseUrl,
+    config.openai.apiKey,
+    config.openai.baseUrl,
+  ]);
 
   useEffect(() => {
     if (menu !== "sms" || !smsResult?.ok) return;
@@ -312,6 +328,9 @@ export function App() {
         />
       );
     }
+    if (menu === "openai") {
+      return <OpenAiPage config={config} live={openAiResult} onChange={(next) => void persist(next)} />;
+    }
     if (menu === "history") return <HistoryPage events={history} logs={logs} />;
     return (
       <FarmPage
@@ -343,7 +362,7 @@ export function App() {
         }}
       />
     );
-  }, [adsListError, adsProfiles, adsResult, busy, config, emailAction, emailResult, farmRun, farmTab, history, logs, menu, openInbox, persist, refreshAdsProfiles, refreshInboxes, refreshSmsNumbers, smsAction, smsActivation, smsResult, smsServices]);
+  }, [adsListError, adsProfiles, adsResult, busy, config, emailAction, emailResult, farmRun, farmTab, history, logs, menu, openAiResult, openInbox, persist, refreshAdsProfiles, refreshInboxes, refreshSmsNumbers, smsAction, smsActivation, smsResult, smsServices]);
 
   const farmLocked = farmNeedsReview(farmRun);
 
@@ -365,7 +384,7 @@ export function App() {
             >
               {item.icon ? <img className="nav-logo" src={item.icon} alt="" /> : null}
               {item.label}
-              {navShowsIntegrationAlert(item.id, { sms: smsResult, email: emailResult, adspower: adsResult }) ? (
+              {navShowsIntegrationAlert(item.id, { sms: smsResult, email: emailResult, adspower: adsResult, openai: openAiResult }) ? (
                 <span className="attention" aria-label="integração falhou">
                   !
                 </span>

@@ -43,6 +43,7 @@ export class LocalStore {
         sms: { ...DEFAULT_CONFIG.sms, ...parsed.sms },
         email: { ...DEFAULT_CONFIG.email, ...parsed.email, provider: "22.do" },
         adspower: stripLegacyAdsPowerKey({ ...DEFAULT_CONFIG.adspower, ...parsed.adspower }),
+        openai: { ...DEFAULT_CONFIG.openai, ...parsed.openai },
         update: { ...DEFAULT_CONFIG.update, ...parsed.update },
         farm: { ...DEFAULT_CONFIG.farm, ...parsed.farm },
         empresas: (parsed.empresas ?? []).map((item) => ({

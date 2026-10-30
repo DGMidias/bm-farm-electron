@@ -33,6 +33,13 @@ describe("store IPC local", () => {
     expect(store.readHistory()).toHaveLength(1);
   });
 
+  it("completa openai ausente com o default", () => {
+    const root = mkdtempSync(joinPath(tmpdir(), "bm-store-"));
+    const store = new LocalStore({ root });
+    writeFileSync(joinPath(root, "config.json"), JSON.stringify({ sms: DEFAULT_CONFIG.sms }));
+    expect(store.readConfig().openai).toEqual(DEFAULT_CONFIG.openai);
+  });
+
   it("descarta API key antiga do AdsPower", () => {
     const root = mkdtempSync(joinPath(tmpdir(), "bm-store-"));
     const store = new LocalStore({ root });

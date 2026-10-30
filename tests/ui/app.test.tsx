@@ -11,6 +11,7 @@ import { AdsPowerPage } from "@renderer/pages/AdsPowerPage";
 import { EmailPage } from "@renderer/pages/EmailPage";
 import { FarmPage } from "@renderer/pages/FarmPage";
 import { FarmRunPage } from "@renderer/pages/FarmRunPage";
+import { OpenAiPage } from "@renderer/pages/OpenAiPage";
 import { SmsPage } from "@renderer/pages/SmsPage";
 
 describe("UI contrato", () => {
@@ -19,12 +20,13 @@ describe("UI contrato", () => {
     delete (window as { desktop?: unknown }).desktop;
   });
 
-  it("mostra os 5 menus e troca de página", async () => {
+  it("mostra os 6 menus e troca de página", async () => {
     const user = userEvent.setup();
     render(<App />);
     expect(screen.getByRole("button", { name: /Número Virtual/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Email \(22\.do\)/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /AdsPower/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^OpenAI$/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^Farm de BM$/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^Histórico$/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /4 · Farm/ })).not.toBeInTheDocument();
@@ -55,6 +57,12 @@ describe("UI contrato", () => {
     expect(screen.getByText(/desligue a autenticação por API key/i)).toBeInTheDocument();
     expect(screen.queryByLabelText(/Perfil de teste/)).not.toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: /Grupo/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^OpenAI$/ }));
+    expect(screen.getByRole("heading", { name: /^OpenAI$/ })).toBeInTheDocument();
+    expect(screen.getByLabelText(/^API key/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/URL base da API/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Testar conexão/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/Checando OpenAI/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /^Farm de BM$/ }));
     expect(screen.getByRole("heading", { name: /Farm de BM/ })).toBeInTheDocument();
   });
@@ -84,6 +92,32 @@ describe("UI contrato", () => {
     expect(screen.getByRole("button", { name: /Número Virtual/ })).toHaveTextContent("!");
     expect(screen.getByRole("button", { name: /^Farm de BM/ })).not.toHaveTextContent("!");
     expect(screen.getByRole("button", { name: /^Histórico$/ })).not.toHaveTextContent("!");
+  });
+
+  it("mostra ! na sidebar se OpenAI falhar", async () => {
+    vi.useFakeTimers();
+    window.desktop = {
+      getConfig: async () => DEFAULT_CONFIG,
+      getHistory: async () => [],
+      engineStatus: async () => ({ running: false, mensagem: "Motor ocioso." }),
+      farmState: async () => ({ running: false, batchSize: 1, companies: [], mensagem: "Farm ocioso." }),
+      platform: async () => ({ id: "win", modKey: "Ctrl", version: "0.1.0" }),
+      listLogs: async () => [],
+      checkUpdate: async () => undefined,
+      onLog: () => () => undefined,
+      onPause: () => () => undefined,
+      onFarmState: () => () => undefined,
+      testSms: async () => ({ ok: true, mensagem: "sms ok" }),
+      testEmail: async () => ({ ok: true, mensagem: "mail ok" }),
+      testOpenAi: async () => ({ ok: false, mensagem: "OpenAI sem API key." }),
+      listAdsPowerProfiles: async () => [],
+    } as typeof window.desktop;
+    render(<App />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("button", { name: /OpenAI/ })).toHaveTextContent("!");
+    expect(screen.getByRole("button", { name: /^Farm de BM/ })).not.toHaveTextContent("!");
   });
 
   it("no card da empresa o PDF é seletor e o toggle de leitura vem ligado", () => {
@@ -289,6 +323,14 @@ describe("UI contrato", () => {
     const actions = screen.getByLabelText(/Ações de Outra Empresa Ltda/);
     const log = screen.getByText(/Outra ok/).parentElement;
     expect(actions.compareDocumentPosition(log!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it("página OpenAI tem API key e não tem Testar conexão", () => {
+    render(<OpenAiPage config={DEFAULT_CONFIG} onChange={() => undefined} />);
+    expect(screen.getByLabelText(/^API key/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/URL base da API/)).toHaveValue("https://api.openai.com/v1");
+    expect(screen.queryByRole("button", { name: /Testar conexão/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/Checando OpenAI/)).toBeInTheDocument();
   });
 
   it("lista os perfis do AdsPower quando a API local está ok", async () => {
